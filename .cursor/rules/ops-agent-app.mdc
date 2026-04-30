@@ -1,0 +1,29 @@
+---
+description: apps/ops-agent — 打包、产物校验、发布与服务器侧运维动作（SSH/rsync/PM2/Docker 等）
+globs: apps/ops-agent/**/*.ts
+alwaysApply: false
+---
+
+# apps/ops-agent
+
+## 职责
+
+- 在 **测试已通过**（由 orchestrator 判定）后，执行 **`pipeline.publishCommand`** 及 **生成脚本** 中的发布步骤。
+- **备份与回滚**：发布前按配置对 **`DEPLOY_REMOTE_PATH`** 做远端快照（见 `server.backup` / `OPS_BACKUP_*`）；保留 N 版；失败可中止发布。回滚通过 **`rollback.sh`**（或等价）将当前部署目录恢复为指定备份；**飞书触发回滚**建议受 `requireFeishuConfirm` 约束。
+- **服务器巡检**：发布前或独立任务经 SSH **只读**执行 **`server.probe`**（`ss -lntp`、关注端口、systemd、`docker ps` 等），将摘要写入报告并发飞书，避免端口冲突或错误环境上线。
+- 将发布结果（版本、artifact、备份 id、回滚方式、巡检摘要）交给 orchestrator **回传飞书**。
+- **静态口令门禁**：编排层启用验证码后，`publish` / `rollback` 等须在 orchestrator **确认消息包含配置的口令**后再下发；ops-agent **不信任**未经验证的客户端调用。
+
+## 安全
+
+- **生产密钥与 SSH** 仅经 env / 密钥管理注入，见 `env-secrets.mdc`；禁止写死主机与令牌。
+- 发布前做 **dry-run / 校验**（如产物 `server.js` 存在性）以降低半包上线风险。
+- 远端探测命令保持 **只读**；如需 `docker`/`systemctl`，使用受限 sudo 或专用低权账号。
+
+## 依赖
+
+- **`@agents/pipeline-core`**：`ops_publish` 等步骤与发布计划类型。
+
+## 职责划分（实现时）
+
+- **优先**在同一进程内按子域拆分目录（打包校验 / 远端发放 / 备份回滚 / 只读巡检），**不**必拆成多个 Agent，除非安全或部署边界要求独立服务（见 `docs/ARCHITECTURE.md` §12）。

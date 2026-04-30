@@ -1,0 +1,46 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "ui": "tui",
+  "globalEnv": [
+    "PORT",
+    "ORCHESTRATOR_PORT",
+    "CODING_AGENT_PORT",
+    "REVIEW_AGENT_PORT",
+    "TEST_AGENT_PORT",
+    "OPS_AGENT_PORT",
+    "REQUIREMENTS_AGENT_PORT",
+    "TASK_STORE_DRIVER",
+    "CI",
+    "NODE_ENV",
+    "E2E_BASE_URL",
+    "E2E_ORCHESTRATOR_URL",
+    "E2E_SKIP_WEB_SERVER"
+  ],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
+    },
+    "lint": {
+      "dependsOn": ["^lint"]
+    },
+    "check-types": {
+      "dependsOn": ["^check-types"]
+    },
+    "test": {
+      "inputs": ["$TURBO_DEFAULT$", "**/vitest.config.ts"]
+    },
+    "test:coverage": {
+      "inputs": ["$TURBO_DEFAULT$", "**/vitest.config.ts"]
+    },
+    "e2e": {
+      "cache": false,
+      "inputs": ["$TURBO_DEFAULT$", "e2e/**"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    }
+  }
+}

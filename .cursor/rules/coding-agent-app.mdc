@@ -1,0 +1,27 @@
+---
+description: apps/coding-agent — 编码 Agent（任务执行、Git/工作区边界，不由 orchestrator 堆叠实现细节）
+globs: apps/coding-agent/**/*.ts
+alwaysApply: false
+---
+
+# apps/coding-agent
+
+## 职责
+
+- 承接 **编码类** 任务：按 orchestrator 下发的结构化任务（分支、路径、约束）修改仓库或脚手架新项目。
+- **不**承担全仓「审核门禁」编排；**不**直接对飞书鉴权（由 orchestrator 统一入口）。
+- 与 LLM/工具链交互时：**可写路径白名单**、**分支策略**以配置为准，避免自然语言绕过边界。
+
+## 演进时的目录习惯（对齐 sentinel 式分层）
+
+| 目录 | 职责 |
+|------|------|
+| **`src/config`** | 任务运行时配置（超时、模型路由占位）；密钥仅 env |
+| **`src/services`** | 「接单 → 规划 → 写文件 / 调工具」编排 |
+| **`src/tools`** 或 **`src/adapters`** | Git、文件系统、后续 Cursor CLI / API 等适配 |
+| **`src/routes`** | 可选 HTTP（健康检查、内部 RPC）；重逻辑不进路由 |
+
+## 依赖
+
+- 共享类型与流水线枚举：**`@agents/pipeline-core`**。
+- 跨 Agent 复用的客户端：**`packages/*`**。

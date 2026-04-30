@@ -1,0 +1,24 @@
+# Cursor indexing ignores — syntax mirrors .gitignore (aligned with sentinel-monorepo).
+
+node_modules/
+
+dist/
+build/
+out/
+.next/
+.cache/
+
+coverage/
+
+*.log
+
+.DS_Store
+
+.env
+.env.local
+*.env
+
+.turbo/
+*.tsbuildinfo
+
+pnpm-lock.yaml

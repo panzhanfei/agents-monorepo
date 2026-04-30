@@ -1,0 +1,116 @@
+# 流水线模板：结构化默认项（可提交仓库）。密钥与机器路径优先读 `.env`，实现建议 env > YAML。
+feishu:
+  enabled: false
+  # 每个主要编排子步骤完成后在群内推送摘要，并等待人工确认后再进入下一步（orchestrator 读此开关；话术见 docs/FEISHU_COMMANDS.md §14）
+  confirmBetweenPipelineSteps: false
+  # 是否从消息中解析「本地项目路径」（覆盖当前任务的 workspace）
+  parseWorkspacePathFromMessage: true
+  # 是否在后续消息中解析「Git 远端 URL」（用于首次提交到仓库）
+  parseGitRemoteUrlFromMessage: true
+
+agents:
+  orchestrator:
+    port: 4010
+  coding-agent:
+    port: 4020
+  review-agent:
+    port: 4030
+  test-agent:
+    port: 4040
+  ops-agent:
+    port: 4050
+  requirements-agent:
+    port: 4060
+
+# 目标业务项目：可从远端克隆，也可仅为客户本机目录（无 Git / 新项目）。
+# env 优先于 YAML；实现侧建议 TARGET_PROJECT_SOURCE=local 时不执行 clone/pull。
+target:
+  # git | local
+  source: git
+  gitRepoUrl: ""
+  defaultBranch: main
+  # git：clone 目的地；local：客户本机项目根目录（推荐绝对路径）
+  workspacePath: ./workspace/target-repo
+
+pipeline:
+  fullTestCommand: "pnpm run test && pnpm run e2e"
+  publishCommand: "pnpm run build"
+
+review:
+  # 默认 profile；可由 REVIEW_RULES_PROFILE 覆盖
+  activeProfile: default
+  profiles:
+    default:
+      aiRulesGlob: ".cursor/rules/**/*.mdc"
+      # 与客户自备规则合并（后者覆盖同名条目策略由实现定义）
+      customerRulesDir: ./config/review-custom
+      blockingCommands:
+        - "pnpm run lint"
+        - "pnpm run check-types"
+    strict:
+      aiRulesGlob: ".cursor/rules/**/*.mdc"
+      customerRulesDir: ./config/review-custom-strict
+      blockingCommands:
+        - "pnpm run lint"
+        - "pnpm run check-types"
+        - "pnpm run knip"
+  extraConfigFiles:
+    - "agents.config.yaml"
+    - "knip.json"
+    - "turbo.json"
+
+packaging:
+  # 目标仓库内构建产物目录（示例留空；按项目填如 apps/main-next/.release）
+  buildOutputDir: ""
+  artifactLocalDir: ./artifacts/release
+  stagingDir: ./artifacts/staging
+
+server:
+  sshHost: ""
+  sshUser: ""
+  sshPort: 22
+  remoteDeployPath: ""
+  # remoteRestartCmd: ""
+  # 发布前远端备份与回滚（实现：deploy 脚本 + rollback 脚本）
+  backup:
+    enabled: true
+    remoteParentDir: /srv/backups/your-app
+    keepRevisions: 5
+    abortPublishIfBackupFails: true
+  rollback:
+    scriptName: rollback.sh
+    requireFeishuConfirm: true
+  # 发布前或独立「巡检」任务：SSH 只读采集
+  probe:
+    listenPorts: [80, 443, 3000, 4000]
+    runSsListenTcp: true
+    runHostInfo: true
+    systemdUnits: []
+    dockerPs: false
+
+# 扫描「目标仓库 + 服务器环境」后生成的运维脚本目录；manifest 存指纹供每次发布前校验
+generatedOps:
+  scriptsDir: .agents/generated
+  manifestPath: .agents/generated/manifest.json
+  enforceManifestFingerprint: false
+
+llm:
+  provider: local
+  baseUrl: http://127.0.0.1:11434/v1
+  model: ""
+  timeoutMs: 120000
+
+# 敏感操作：客户在飞书消息中带上与配置一致的静态口令即可（实现：VERIFY_CODE 优先，其次 YAML staticCode）
+security:
+  verificationCode:
+    enabled: true
+    # 静态验证码；生产建议在 `.env` 用 VERIFY_CODE 覆盖并不提交仓库，此处可留空
+    staticCode: ""
+    requiredForActions:
+      - publish
+      - full_release
+      - rollback
+      - change_review_rules
+      - change_deploy_target
+      - change_workspace_binding
+      - git_remote_override

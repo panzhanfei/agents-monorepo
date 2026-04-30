@@ -1,0 +1,19 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "workspaces": {
+    ".": {
+      "ignoreDependencies": ["@vitest/coverage-v8"]
+    },
+    "apps/coding-agent": {},
+    "apps/ops-agent": {},
+    "apps/orchestrator": {},
+    "apps/review-agent": {},
+    "apps/requirements-agent": {},
+    "apps/test-agent": {},
+    "packages/pipeline-core": {},
+    "packages/logger": {},
+    "packages/http-errors": {}
+  },
+  "ignore": ["**/*.d.ts"],
+  "ignoreBinaries": ["sleep"]
+}

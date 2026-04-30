@@ -1,0 +1,31 @@
+---
+description: apps/requirements-agent — 产品需求分析（口头/飞书需求 → 结构化 PRD、验收标准、边界与风险）
+globs: apps/requirements-agent/**/*.ts
+alwaysApply: false
+---
+
+# apps/requirements-agent（产品需求分析）
+
+## 职责
+
+- 消费 **自然语言需求**（飞书、工单摘要等），输出 **结构化产物**：用户故事 / 功能列表、**验收标准（AC）**、非功能约束、边界条件、依赖与假设、风险与待确认项。
+- **先于编码**：建议 orchestrator 在客户确认 PRD 摘要前 **不自动进入 coding-agent**（或仅生成草稿分支）。
+- **可追溯**：产出需带版本号或任务 id，便于后续审核与测试引用同一口径。
+
+## 边界
+
+- **不做最终实现**：不写业务代码；深度技术方案可给「建议」章节，但以 coding-agent / 架构文档为准。
+- **不擅自改仓库配置**：变更 `agents.config.yaml`、审核规则等仍走 orchestrator + 验证码门禁。
+
+## 依赖
+
+- **`@agents/pipeline-core`**：`requirements_analysis` 步骤类型；输出 DTO 演进时在包内扩展。
+
+## 演进目录习惯
+
+| 目录 | 职责 |
+|------|------|
+| **`src/config`** | LLM、模板路径、输出格式（Markdown / JSON schema） |
+| **`src/services`** | 「解析输入 → 调用模型 → 校验输出完整性」 |
+| **`src/prompts`** | Few-shot / 角色定义 |
+| **`src/routes`** | `/health`、触发分析的 webhook |

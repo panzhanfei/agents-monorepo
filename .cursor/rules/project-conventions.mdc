@@ -1,0 +1,41 @@
+---
+description: TS 风格、interface.ts 与 I 前缀类型命名、聚合导出、packages、新增能力前先查复用（对齐 sentinel-monorepo 约定）
+alwaysApply: true
+---
+
+# 项目约定（agents-monorepo）
+
+## TypeScript 与函数风格
+
+- 默认使用**箭头函数**编写模块级函数；仅当框架必须用 `function` 时再使用。
+- **导出 API**、**对外 props**、**hook 返回值**与边界载荷写**显式类型**；避免 `any`，必要时 `unknown` 再收窄。
+- 局部可从字面量明显推断时可依赖推断；**边界处**仍写清类型。
+
+## 不在自定义函数内再声明函数
+
+- 业务代码中不要在函数内部再声明长的嵌套子函数（不利于测试与复用）。
+- **例外**：框架回调、`map`/`then` 一行级短回调；体积大则外提成模块级具名函数或工厂文件。
+
+## 类型拆分与 `interface.ts`
+
+- 声明累积较多行时抽到同 feature 的 **`interface.ts`**。
+- **命名**：对外接口与对象类型 **`I` + PascalCase**（如 `IOrchestratorContext`）。
+- **导出**：`export interface I...` / `export type`，业务文件 `import type`。
+
+## 新增能力：先查复用再实现
+
+- **编排与流水线**：跨通道（飞书 / Git / CI）的共享逻辑放在 **`packages/pipeline-core`** 或后续新增 **`packages/*`**，不要在多个 `apps/*` 复制。
+- **HTTP 编排入口**：`apps/orchestrator` 负责飞书/Webhook、任务状态与调用各 **Agent**（`requirements-agent`、`coding-agent`、`review-agent`、`test-agent`、`ops-agent`）；**不要**把编码/审核/测试执行/发布细节堆在 orchestrator，应分别落在对应 `apps/*` 或 `packages/*`。
+
+## Monorepo：共享能力放在 `packages/`
+
+- 多应用或多 Job 共用的类型、客户端封装、门禁适配器放在 **`packages/<包名>/`**。
+- 应用通过 workspace 依赖引用。
+
+## 聚合导出（`index.ts` / barrel）
+
+- 新增对外 API 时在对应层级维护 **`index.ts`** 聚合导出。
+- **测试文件**不要进业务 barrel。
+- **`packages/*`**：遵循各包 `package.json` `exports`。
+
+各应用细则见：`orchestrator-app.mdc`、`requirements-agent-app.mdc`、`coding-agent-app.mdc`、`review-agent-app.mdc`、`test-agent-app.mdc`、`ops-agent-app.mdc`、`pipeline-packages.mdc`。
