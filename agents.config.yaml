@@ -16,7 +16,8 @@ agents:
   review-agent:
     port: 4030
   test-agent:
-    port: 4040
+    # 4040 留给 ngrok 本地 Web UI/API；test-agent 勿占用 4040
+    port: 4041
   ops-agent:
     port: 4050
   requirements-agent:

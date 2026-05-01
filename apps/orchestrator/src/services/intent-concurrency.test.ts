@@ -15,6 +15,12 @@ describe('intent-concurrency', () => {
     );
   });
 
+  it('parseIntentFromMessage treats greetings as help', () => {
+    expect(parseIntentFromMessage('你好')).toBe('help');
+    expect(parseIntentFromMessage('Hello！')).toBe('help');
+    expect(parseIntentFromMessage('在吗')).toBe('help');
+  });
+
   it('parseIntentFromMessage detects help', () => {
     expect(parseIntentFromMessage('帮助')).toBe('help');
     expect(parseIntentFromMessage('新手指引')).toBe('help');

@@ -32,3 +32,10 @@ yarn-error.log*
 .pnpm-store
 
 **/*.tsbuildinfo
+
+# ngrok / local tunnel (scripts/dev-with-ngrok.sh)
+.ngrok.log
+.ngrok.pid
+
+# 本地日志或临时目录（可选）
+logs/

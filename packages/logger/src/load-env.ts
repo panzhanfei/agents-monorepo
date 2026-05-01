@@ -10,4 +10,7 @@ export const loadMonorepoEnvFromEntry = (importMetaUrl: string): void => {
   const appRoot = path.resolve(entryDir, '..');
   const monorepoRoot = path.resolve(appRoot, '..', '..');
   config({ path: path.join(monorepoRoot, '.env') });
+  if (!process.env.AGENTS_MONOREPO_ROOT) {
+    process.env.AGENTS_MONOREPO_ROOT = monorepoRoot;
+  }
 };

@@ -48,7 +48,7 @@ pnpm run test:coverage
 pnpm run e2e
 ```
 
-**编排并发（MVP）**：同一 **`action`（如 `code`）** 在任务处于 `pending` / `running` / `awaiting_confirmation` 时不允许再建同类任务；响应 **`409`**，体中有 **`feishuReplyText`** 可直接发飞书。可选 **`channelId`**（写入 `metadata.channelId`）时为 **按会话** 互斥；不传则 **全局** 同动作互斥。模拟入口：`POST /v1/mock-feishu`，body 示例：`{"text":"编码：修登录","channelId":"oc_xxx"}`。
+**编排并发（MVP）**：同一 **`action`（如 `code`）** 在任务处于 `pending` / `running` / `awaiting_confirmation` 时不允许再建同类任务；响应 **`409`**，体中有 **`feishuReplyText`** 可直接发飞书。可选 **`channelId`**（写入 `metadata.channelId`）时为 **按会话** 互斥；不传则 **全局** 同动作互斥。飞书 Webhook：`POST /feishu/webhook` 或 `POST /v1/feishu/webhook`，body 示例：`{"text":"编码：修登录","channelId":"oc_xxx"}`（与飞书侧事件格式对齐时需做解析适配）。
 
 ## 项目架构
 

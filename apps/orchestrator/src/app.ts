@@ -3,7 +3,6 @@ import { createLogger } from '@agents/logger';
 import {
   applySecurityHeaders,
   createExpressErrorHandler,
-  notFoundHandler,
 } from '@agents/http-errors';
 import { requestContextPlaceholder } from './middlewares/request-context.js';
 import { registerRoutes } from './routes/index.js';
@@ -18,8 +17,34 @@ export const createApp = (): express.Express => {
   applySecurityHeaders(app);
   app.use(express.json({ limit: '1mb' }));
   app.use(requestContextPlaceholder);
+  app.use((req, res, next) => {
+    if (req.method !== 'POST') {
+      next();
+      return;
+    }
+    const p = req.path.toLowerCase();
+    if (p.includes('feishu') || p.includes('mock-feishu')) {
+      logger.info('feishu_http_probe', {
+        path: req.path,
+        originalUrl: req.originalUrl,
+        contentType: req.headers['content-type'] ?? null,
+        contentLength: req.headers['content-length'] ?? null,
+      });
+    }
+    next();
+  });
   registerRoutes(app, { logger, taskStore });
-  app.use(notFoundHandler);
+  app.use((req, res) => {
+    logger.warn('http_not_found', {
+      method: req.method,
+      path: req.path,
+      originalUrl: req.originalUrl,
+    });
+    res.status(404).json({
+      ok: false,
+      error: { code: 'NOT_FOUND', message: 'Not found' },
+    });
+  });
   app.use(createExpressErrorHandler({ logger }));
   return app;
 };

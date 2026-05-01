@@ -65,7 +65,7 @@ export const runReviewHttp = async (
 };
 
 export const getTestAgentBaseUrl = (): string =>
-  process.env.TEST_AGENT_BASE_URL?.trim() ?? 'http://127.0.0.1:4040';
+  process.env.TEST_AGENT_BASE_URL?.trim() ?? 'http://127.0.0.1:4041';
 
 export const runTestHttp = async (
   body: ITestRunRequest,

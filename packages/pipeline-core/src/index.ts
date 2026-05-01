@@ -55,6 +55,11 @@ export type {
 } from './requirements-contract.js';
 
 export type {
+  ICodingRunRequest,
+  ICodingRunResponse,
+} from './coding-contract.js';
+
+export type {
   IReviewFinding,
   IReviewGateCommandResult,
   IReviewLlmSlice,

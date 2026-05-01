@@ -26,7 +26,7 @@ test.describe('agent services health', () => {
   });
 
   test('test-agent GET /health', async ({ request }) => {
-    const res = await request.get('http://127.0.0.1:4040/health');
+    const res = await request.get('http://127.0.0.1:4041/health');
     expect(res.ok()).toBeTruthy();
     const body = await res.json();
     expect(body.ok).toBe(true);

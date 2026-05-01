@@ -1,6 +1,7 @@
 import type { Express } from 'express';
 import type { ILogger } from '@agents/logger';
 import { registerHealthRoutes } from './health.js';
+import { registerCodingRunRoutes } from './coding-run.js';
 import { SERVICE_LABEL, SERVICE_NAME } from '../config/constants.js';
 
 export type IRoutesContext = {
@@ -13,4 +14,5 @@ export const registerRoutes = (app: Express, ctx: IRoutesContext): void => {
     agent: SERVICE_NAME,
     label: SERVICE_LABEL,
   });
+  registerCodingRunRoutes(app, { logger: ctx.logger });
 };

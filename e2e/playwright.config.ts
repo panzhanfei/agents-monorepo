@@ -53,8 +53,8 @@ export default defineConfig({
         {
           command: 'pnpm exec tsx src/index.ts',
           cwd: '../apps/test-agent',
-          env: { ...process.env, PORT: '4040' },
-          url: 'http://127.0.0.1:4040/health',
+          env: { ...process.env, PORT: '4041' },
+          url: 'http://127.0.0.1:4041/health',
           reuseExistingServer: !process.env.CI,
           timeout: 120_000,
           stdout: 'pipe',

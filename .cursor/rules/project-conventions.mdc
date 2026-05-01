@@ -39,4 +39,11 @@ alwaysApply: true
 - **测试文件**不要进业务 barrel。
 - **`packages/*`**：遵循各包 `package.json` `exports`。
 
+## 改完代码后必须自测（再收口给用户）
+
+- **本仓内**：对改动的包至少跑 **`pnpm --filter <包名> test`** 与 **`check-types`**（命中哪些 filter 以实际改动为准）；动到 **`pnpm dev` / 端口 / 脚本 / nx-turbo 与多 app 启动** 时，再跑一轮 **`pnpm dev:no-tunnel`**（或等价）做短时冒烟，确认无 **`EADDRINUSE`**、关键 **`/health`** 可访问；**未跑通不得**对用户说「已好 / 没问题」。
+- **飞书 Webhook / 编排飞书链路**：收口前跑一次 **`pnpm verify:feishu`**；若改需求分析下游可 **`SMOKE_REQUIREMENTS_FULL=1 ... pnpm verify:feishu`**。
+- **全项目流转日志（第二终端）**：开发环境各服务默认把 JSON 日志写入仓库 **`logs/<service>.log`**（可通过 **`AGENTS_LOG_DIR`** 改路，**`AGENTS_LOG_DISABLE=1`** 关闭）。另开终端运行 **`pnpm logs`** 即 **`tail -f` 聚合**这些文件；**未跑 dev 时** `pnpm logs` 会等待进程创建日志。
+- **环境所限**（如无终端、沙箱不能起服务）时：**明说**未跑哪一步、用户本地需补跑什么命令。
+
 各应用细则见：`orchestrator-app.mdc`、`requirements-agent-app.mdc`、`coding-agent-app.mdc`、`review-agent-app.mdc`、`test-agent-app.mdc`、`ops-agent-app.mdc`、`pipeline-packages.mdc`、`runtime-skills-layering.mdc`。

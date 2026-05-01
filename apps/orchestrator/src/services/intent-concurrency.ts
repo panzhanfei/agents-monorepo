@@ -43,6 +43,13 @@ export const parseIntentFromMessage = (text: string): string | null => {
     return null;
   }
   if (
+    /^(?:你好|您好|嗨|哈喽|hi|hello|hey|在吗|在么|早上好|下午好|晚上好)[\s!！。.?？~～]*$/i.test(
+      t
+    )
+  ) {
+    return 'help';
+  }
+  if (
     /^(?:帮助|新手指引|新手入门|使用说明)\s*$|^help\s*$/i.test(t) ||
     /^指令[:：]\s*(?:帮助|新手指引|新手入门)\s*$/i.test(t) ||
     /^agent\s*指南\s*$/i.test(t)
