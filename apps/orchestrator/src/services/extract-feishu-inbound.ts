@@ -10,6 +10,10 @@ export type IFeishuInboundExtract = {
   channelId?: string;
   /** 用户触发这条 webhook 的飞书消息 id；用于 `im/v1/messages/:id/reply`，优先于往群直发 */
   inboundMessageId?: string;
+  /** 用户「回复 / 话题」所挂的父消息 id；引用机器人 PRD 时多为该条机器人 message_id */
+  parentMessageId?: string;
+  /** 话题根消息 id（部分事件下与 parent 二选一可解析到引用链） */
+  rootMessageId?: string;
 };
 
 /**
@@ -102,11 +106,22 @@ export const extractFeishuInboundText = (
       ? msg.message_id
       : undefined;
 
+  const parentMessageId =
+    typeof msg.parent_id === 'string' && msg.parent_id !== ''
+      ? msg.parent_id
+      : undefined;
+  const rootMessageId =
+    typeof msg.root_id === 'string' && msg.root_id !== ''
+      ? msg.root_id
+      : undefined;
+
   return {
     text: innerText,
     ...(chatId !== undefined ? { channelId: chatId } : {}),
     ...(inboundMessageId !== undefined
       ? { inboundMessageId }
       : {}),
+    ...(parentMessageId !== undefined ? { parentMessageId } : {}),
+    ...(rootMessageId !== undefined ? { rootMessageId } : {}),
   };
 };

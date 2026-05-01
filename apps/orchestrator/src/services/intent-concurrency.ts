@@ -3,6 +3,7 @@ import type { ITaskRecord } from '@agents/pipeline-core';
 /** 与 docs/FEISHU_COMMANDS 内部 action 对齐，用于对用户可见文案。 */
 export const ACTION_LABEL_ZH: Record<string, string> = {
   code: '编码',
+  clear_tasks: '清空任务',
   requirements_analysis: '需求分析',
   review: '代码审核',
   test: '全量测试',
@@ -50,6 +51,12 @@ export const parseIntentFromMessage = (text: string): string | null => {
     return 'help';
   }
   if (
+    /^(?:清空|清除|重置)任务\s*$|^reset\s*tasks?\s*$/i.test(t) ||
+    /^指令[:：]\s*(?:清空|清除|重置)任务\s*$/i.test(t)
+  ) {
+    return 'clear_tasks';
+  }
+  if (
     /^(?:帮助|新手指引|新手入门|使用说明)\s*$|^help\s*$/i.test(t) ||
     /^指令[:：]\s*(?:帮助|新手指引|新手入门)\s*$/i.test(t) ||
     /^agent\s*指南\s*$/i.test(t)
@@ -58,6 +65,13 @@ export const parseIntentFromMessage = (text: string): string | null => {
   }
   if (/一键(?:发布|测试打包发包)|full_release/i.test(t)) {
     return 'full_release';
+  }
+  if (
+    /^(?:修订|更新)(?:\s+PRD)?\s+[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(
+      t
+    )
+  ) {
+    return 'requirements_analysis';
   }
   if (/需求分析|PRD|requirements_analysis/i.test(t)) {
     return 'requirements_analysis';

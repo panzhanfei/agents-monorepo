@@ -56,4 +56,13 @@ describe('MemoryTaskStore', () => {
     const hit = await store.findActiveTaskByAction({ action: 'code' });
     expect(hit).toBeNull();
   });
+
+  it('clearAllTasks wipes all rows', async () => {
+    await store.createTask({ action: 'a' });
+    await store.createTask({ action: 'b' });
+    const n = await store.clearAllTasks();
+    expect(n).toBe(2);
+    const list = await store.listTasks();
+    expect(list).toHaveLength(0);
+  });
 });

@@ -19,6 +19,7 @@ export type IRequirementsAnalysisDeps = {
 const buildUserPrompt = (
   input: IRequirementsAnalysisRequest
 ): string => {
+  const mode = input.mode ?? 'create';
   const stackSection =
     input.targetStackTargets !== undefined &&
     input.targetStackTargets.length > 0
@@ -28,6 +29,27 @@ const buildUserPrompt = (
           '',
         ].join('\n')
       : '';
+
+  if (mode === 'revise' && input.priorPrdMarkdown !== undefined) {
+    return [
+      `taskId（追溯用）：${input.taskId}`,
+      '',
+      '【模式】修订：将「上一版 PRD」与「用户本次补充」合并为一份新的完整 PRD（必须包含全部必选二级标题；不得只输出摘要）。',
+      '',
+      '## 上一版 PRD',
+      '',
+      input.priorPrdMarkdown.trim(),
+      '',
+      '## 用户本次补充 / 澄清',
+      '',
+      input.rawRequirement.trim(),
+      '',
+      stackSection,
+      '请输出合并后的完整 PRD Markdown，并在正文内用「### 本版相对上一版的主要变更」列出变更要点。',
+    ]
+      .filter((line) => line !== '')
+      .join('\n');
+  }
 
   return [
     `taskId（追溯用）：${input.taskId}`,

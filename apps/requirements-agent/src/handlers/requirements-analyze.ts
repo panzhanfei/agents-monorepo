@@ -21,11 +21,25 @@ const targetSchema = z.discriminatedUnion('implementationRole', [
   }),
 ]);
 
-export const requirementsAnalysisBodySchema = z.object({
-  taskId: z.string().min(1),
-  rawRequirement: z.string().min(1).max(200_000),
-  targetStackTargets: z.array(targetSchema).optional(),
-});
+export const requirementsAnalysisBodySchema = z
+  .object({
+    taskId: z.string().min(1),
+    mode: z.enum(['create', 'revise']).optional(),
+    priorPrdMarkdown: z.string().max(600_000).optional(),
+    rawRequirement: z.string().min(1).max(200_000),
+    targetStackTargets: z.array(targetSchema).optional(),
+  })
+  .superRefine((v, ctx) => {
+    if (v.mode === 'revise') {
+      if (v.priorPrdMarkdown === undefined || v.priorPrdMarkdown.trim() === '') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'revise 模式必须提供非空的 priorPrdMarkdown',
+          path: ['priorPrdMarkdown'],
+        });
+      }
+    }
+  });
 
 export const createRequirementsAnalyzeHandler = (
   logger: ILogger

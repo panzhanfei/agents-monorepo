@@ -5,6 +5,20 @@ import {
 } from './intent-concurrency.js';
 
 describe('intent-concurrency', () => {
+  it('parseIntentFromMessage detects clear_tasks', () => {
+    expect(parseIntentFromMessage('清空任务')).toBe('clear_tasks');
+    expect(parseIntentFromMessage('重置任务')).toBe('clear_tasks');
+    expect(parseIntentFromMessage('指令：清除任务')).toBe('clear_tasks');
+  });
+
+  it('parseIntentFromMessage treats leading 修订 <uuid> as requirements', () => {
+    expect(
+      parseIntentFromMessage(
+        '修订 a1b2c3d4-e5f6-7890-abcd-ef1234567890：补充说明'
+      )
+    ).toBe('requirements_analysis');
+  });
+
   it('parseIntentFromMessage detects code', () => {
     expect(parseIntentFromMessage('编码：修 login')).toBe('code');
   });

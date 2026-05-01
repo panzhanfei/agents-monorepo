@@ -89,6 +89,7 @@
 ## 7. 幂等与重试
 
 - **假设**：飞书/Webhook 可能 **至少投递一次**；编排层应设计 **任务级幂等** 或「同一任务的破坏性操作只提交一次」。
+- **引用回复（需求修订）**：编排可解析 IM 消息中的 **`parent_id` / `root_id`**，并与 **机器人成功发出的 PRD `message_id`** 在进程内建立 **临时锚点**，将用户补充 **合并进既有** `requirements_analysis` 任务（与「同一次 Webhook 重复投递」的去重策略正交）；细节见 [FEISHU_COMMANDS.md](./FEISHU_COMMANDS.md) **第 4、12 节**。
 - **落点**：幂等键、去重窗口、**发布/回滚/改配** 等关键操作应在 **orchestrator**（或其后继 TaskStore）统一策略，而非每个 Agent 各自防重。
 
 ---

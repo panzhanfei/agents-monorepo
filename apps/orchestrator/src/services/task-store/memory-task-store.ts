@@ -105,4 +105,10 @@ export class MemoryTaskStore implements ITaskStore {
     }
     return null;
   }
+
+  public async clearAllTasks(): Promise<number> {
+    const n = this.byId.size;
+    this.byId.clear();
+    return n;
+  }
 }

@@ -64,4 +64,9 @@ export interface ITaskStore {
    * 后续 PostgreSQL 实现可用唯一部分索引 `(action, channel_id) WHERE status IN (...)` 优化。
    */
   findActiveTaskByAction(query: IFindActiveTaskQuery): Promise<ITaskRecord | null>;
+  /**
+   * 删除全部任务记录（仅适用于 memory 等可丢弃存储；持久化实现可抛错或对接运维级 purge）。
+   * @returns 删除条数
+   */
+  clearAllTasks(): Promise<number>;
 }

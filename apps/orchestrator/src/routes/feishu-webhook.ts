@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from 'express';
 import type { ILogger } from '@agents/logger';
-import type { ITaskStore } from '@agents/pipeline-core';
+import type { ITaskStore, IRequirementsAnalysisResponse } from '@agents/pipeline-core';
 import { AppError } from '@agents/http-errors';
 import {
   parseIntentFromMessage,
@@ -9,6 +9,11 @@ import {
 } from '../services/intent-concurrency.js';
 import { assertNoConcurrentExclusiveTask } from '../services/assert-no-concurrent-task.js';
 import { buildCustomerHelpFeishuReply } from '../services/customer-help-reply.js';
+import {
+  buildCodingPrereqBlockedFeishuReply,
+  collectCodingFeishuPrereqIssues,
+} from '../services/feishu-action-prereqs.js';
+import { parseRequirementsAnalysisMessage } from '../services/parse-requirements-revision.js';
 import { analyzeRequirementsHttp } from '../clients/requirements-agent-client.js';
 import { runReviewHttp, runTestHttp } from '../clients/review-test-agents-client.js';
 import { runCodingHttp } from '../clients/coding-agent-client.js';
@@ -17,7 +22,19 @@ import { extractFeishuUrlVerificationChallenge } from '../services/feishu-url-ve
 import {
   feishuAutoReplyConfigured,
   sendFeishuOutboundText,
+  type IFeishuSendResult,
 } from '../services/feishu-im-reply.js';
+import {
+  clearFeishuPrdAnchors,
+  registerFeishuPrdOutboundAnchor,
+  resolveTaskIdFromQuotedFeishuMessage,
+} from '../services/feishu-prd-thread-anchor.js';
+import { stripOptionalRequirementsPrefix } from '../services/strip-requirements-lead.js';
+import {
+  buildFeishuDedupKey,
+  tryBeginFeishuInboundDedup,
+  finishFeishuInboundDedup,
+} from '../services/feishu-inbound-dedup.js';
 import { teeFeishuFlow } from '../services/tee-feishu-flow.js';
 
 const previewText = (t: string, max = 120): string =>
@@ -125,6 +142,11 @@ export const registerFeishuWebhookRoutes = (
           ? extracted.inboundMessageId
           : undefined;
 
+      const quotedThreadTaskId = resolveTaskIdFromQuotedFeishuMessage({
+        parentMessageId: extracted.parentMessageId,
+        rootMessageId: extracted.rootMessageId,
+      });
+
       const rootMeta =
         rootBody.metadata !== null &&
         typeof rootBody.metadata === 'object' &&
@@ -134,7 +156,12 @@ export const registerFeishuWebhookRoutes = (
 
       const respondFeishuJson = (
         statusCode: number,
-        body: Record<string, unknown>
+        body: Record<string, unknown>,
+        opts?: {
+          readonly onOutboundSettled?: (
+            sendResult: IFeishuSendResult
+          ) => void | Promise<void>;
+        }
       ): void => {
         const reply =
           typeof body.feishuReplyText === 'string' &&
@@ -152,7 +179,8 @@ export const registerFeishuWebhookRoutes = (
             text: reply,
             logger,
           })
-            .then((sendResult) => {
+            .then(async (sendResult) => {
+              await opts?.onOutboundSettled?.(sendResult);
               if (sendResult.kind === 'error') {
                 logger.warn('feishu_im_reply_failed', {
                   message: sendResult.message,
@@ -197,16 +225,48 @@ export const registerFeishuWebhookRoutes = (
         }
       };
 
+      const inboundDedupKey = buildFeishuDedupKey(rootBody, extracted);
+      if (
+        inboundDedupKey !== null &&
+        !tryBeginFeishuInboundDedup(inboundDedupKey)
+      ) {
+        logger.info('飞书 webhook 去重：跳过重复投递', {
+          flow: 'dedup',
+          dedupKey: inboundDedupKey,
+          inboundMessageId: inboundMessageId ?? null,
+        });
+        teeFeishuFlow('>>> ⑦ 响应', '200 重复投递(已忽略)');
+        res.status(200).json({
+          ok: true,
+          code: 'DUPLICATE_INBOUND',
+          message:
+            '本条消息已处理过，重复投递已忽略（不会产生第二条机器人回复）。',
+        });
+        return;
+      }
+
+      const runInbound = async (): Promise<void> => {
       logger.info('收到消息', {
         flow: 'receive',
         channelId: channelId ?? null,
         inboundMessageId: inboundMessageId ?? null,
+        quotableThreadTaskIdSuffix:
+          quotedThreadTaskId !== undefined
+            ? quotedThreadTaskId.slice(-8)
+            : null,
         textLen: text.length,
         textPreview: previewText(text),
       });
       teeFeishuFlow('>>> ② 正文', previewText(text));
 
-      const action = parseIntentFromMessage(text);
+      let action = parseIntentFromMessage(text);
+      if (
+        quotedThreadTaskId !== undefined &&
+        action === null &&
+        text.trim() !== ''
+      ) {
+        action = 'requirements_analysis';
+      }
       if (action === null) {
         logger.info('返回响应', {
           flow: 'respond',
@@ -219,10 +279,12 @@ export const registerFeishuWebhookRoutes = (
           feishuReplyText: [
             '这句话里没有识别到指令。',
             '',
-            '发「帮助」可查看完整命令说明。常用示例：',
-            '· 需求分析：〈你的产品需求〉',
-            '· 编码：〈要做的改动〉',
-            '· 状态',
+            '发「帮助」可看完整说明。常用写法示例：',
+            '需求分析：〈你的产品需求〉',
+            '编码：〈要做的改动〉',
+            '状态｜清空任务',
+            '',
+            '若在机器人 PRD 下「引用回复」，可直接写补充（不必再写任务 ID）；需本机 FEISHU_AUTO_REPLY 已把 PRD 发出并登记锚点。',
           ].join('\n'),
         });
         teeFeishuFlow('>>> ⑦ 响应', '200 未识别意图');
@@ -269,6 +331,41 @@ export const registerFeishuWebhookRoutes = (
         return;
       }
 
+      if (action === 'clear_tasks') {
+        clearFeishuPrdAnchors();
+        const deleted = await taskStore.clearAllTasks();
+        const reply =
+          deleted === 0
+            ? [
+                '当前没有可清空的任务记录（内存任务表本来就是空的）。',
+                '',
+                '说明：每次「需求分析：…」都是只读你这一条消息起稿，不会在模型里自动接上旧任务；若 PRD 提到 Turborepo / 微前端等，多半是照抄你本条里的简历正文。',
+                '若你看到两条一模一样的机器人回复：真实飞书事件含 message_id 时编排器会进程内去重；仍重复时请查双通道转发、多实例或未带 message_id 的本地模拟。',
+              ].join('\n')
+            : [
+                `已清空本机内存中的 ${String(deleted)} 条任务记录（再看「状态」应为空）。`,
+                '',
+                '之后「需求分析：…」会分配新的任务 ID。',
+                '注意：不要使用已清空任务里的 UUID 再做「修订」；修订只对你仍保留的任务 ID 有效。',
+                '',
+                '同上：新发起的「需求分析」不会自动混入旧 PRD；仍出现重复回复时参见上条（message_id 去重 / 双通道 / 多实例）。',
+              ].join('\n');
+        logger.info('返回响应', {
+          flow: 'respond',
+          httpStatus: 200,
+          action: 'clear_tasks',
+          deletedCount: deleted,
+        });
+        respondFeishuJson(200, {
+          ok: true,
+          action: 'clear_tasks',
+          deletedCount: deleted,
+          feishuReplyText: reply,
+        });
+        teeFeishuFlow('>>> ⑦ 响应', `200 clear_tasks 删${String(deleted)}`);
+        return;
+      }
+
       if (ACTIONS_SKIP_CONCURRENCY_GUARD.has(action)) {
         const reply = `「${actionLabelZh(action)}」尚未接入，请发「帮助」查看当前已支持的指令。`;
         logger.info('返回响应', {
@@ -286,6 +383,274 @@ export const registerFeishuWebhookRoutes = (
         });
         teeFeishuFlow('>>> ⑦ 响应', `501 未实现 ${action}`);
         return;
+      }
+
+      if (action === 'code') {
+        const codingPrereqs = collectCodingFeishuPrereqIssues();
+        if (codingPrereqs.length > 0) {
+          logger.info('返回响应', {
+            flow: 'respond',
+            httpStatus: 200,
+            kind: 'coding_prerequisites_missing',
+            issues: codingPrereqs,
+          });
+          respondFeishuJson(200, {
+            ok: false,
+            code: 'CODING_PREREQUISITES_MISSING',
+            issues: codingPrereqs,
+            feishuReplyText: buildCodingPrereqBlockedFeishuReply(codingPrereqs),
+          });
+          teeFeishuFlow('>>> ⑦ 响应', '200 编码前置配置缺失');
+          return;
+        }
+      }
+
+      const parsedExplicitReq = parseRequirementsAnalysisMessage(text);
+      const requirementMsgShape =
+        action !== 'requirements_analysis'
+          ? ({ kind: 'create' as const })
+          : parsedExplicitReq.kind === 'revision'
+            ? parsedExplicitReq
+            : quotedThreadTaskId !== undefined
+              ? {
+                  kind: 'revision' as const,
+                  baseTaskId: quotedThreadTaskId,
+                  instruction: stripOptionalRequirementsPrefix(text),
+                }
+              : ({ kind: 'create' as const });
+
+      const runAnalyzeAndPersistRequirements = async (params: {
+        readonly taskRecord: NonNullable<Awaited<ReturnType<ITaskStore['getTask']>>>;
+        readonly rawForAgent: string;
+        readonly mode?: 'revise';
+        readonly priorPrdMarkdown?: string;
+      }): Promise<{
+        readonly analysis: IRequirementsAnalysisResponse;
+        readonly task: NonNullable<Awaited<ReturnType<ITaskStore['getTask']>>>;
+      }> => {
+        const tid = params.taskRecord.taskId;
+        const analysis = await analyzeRequirementsHttp({
+          taskId: tid,
+          ...(params.mode === 'revise' && params.priorPrdMarkdown !== undefined
+            ? {
+                mode: 'revise' as const,
+                priorPrdMarkdown: params.priorPrdMarkdown,
+              }
+            : {}),
+          rawRequirement: params.rawForAgent,
+        });
+        const updated = await taskStore.updateTask(tid, {
+          status: 'completed',
+          metadata: {
+            ...(params.taskRecord.metadata ?? {}),
+            requirementsMarkdown: analysis.markdown,
+            prdStatus: analysis.prdStatus,
+          },
+        });
+        if (updated === null) {
+          throw new AppError('INTERNAL', '更新任务失败（requirements）', 500);
+        }
+        return { analysis, task: updated };
+      };
+
+      /** 在原任务上修订 PRD：不写新任务记录，沿用原 taskId。 */
+      if (requirementMsgShape.kind === 'revision') {
+        const gateRev = await assertNoConcurrentExclusiveTask(taskStore, action, {
+          channelId,
+        });
+        if (!gateRev.ok) {
+          logger.warn('并发门禁：已拒绝（需求修订）', {
+            flow: 'respond',
+            httpStatus: 409,
+            requestedAction: action,
+            blockingTaskId: gateRev.existingTask.taskId,
+          });
+          respondFeishuJson(409, {
+            ok: false,
+            code: 'CONCURRENT_TASK',
+            requestedAction: action,
+            existingTask: gateRev.existingTask,
+            feishuReplyText: gateRev.feishuReplyText,
+          });
+          teeFeishuFlow('>>> ⑦ 响应', '409 并发拦截(修订)');
+          return;
+        }
+
+        const baseTask = await taskStore.getTask(requirementMsgShape.baseTaskId);
+        if (baseTask === null) {
+          respondFeishuJson(200, {
+            ok: false,
+            code: 'TASK_NOT_FOUND',
+            feishuReplyText: [
+              '找不到要修订的任务 ID。',
+              `请核对后重试：` + requirementMsgShape.baseTaskId,
+              '任务 ID 在每次「需求分析」完成摘要的第一行可见；可复制后使用「需求分析 修订 <任务ID>：你的补充」。',
+            ].join('\n'),
+          });
+          teeFeishuFlow('>>> ⑦ 响应', '200 修订目标不存在');
+          return;
+        }
+        if (baseTask.action !== 'requirements_analysis') {
+          respondFeishuJson(200, {
+            ok: false,
+            code: 'TASK_NOT_REQUIREMENTS_ANALYSIS',
+            feishuReplyText: [
+              `该任务不是「需求分析」记录，无法在此处合并修订。`,
+              `任务 ID：${baseTask.taskId}`,
+              baseTask.action !== undefined ? `类型：${baseTask.action}` : '',
+            ]
+              .filter((s) => s !== '')
+              .join('\n'),
+          });
+          teeFeishuFlow('>>> ⑦ 响应', '200 任务类型不符');
+          return;
+        }
+        if (baseTask.status === 'running') {
+          respondFeishuJson(200, {
+            ok: false,
+            code: 'TASK_ALREADY_RUNNING',
+            feishuReplyText: [
+              `该需求分析任务仍在执行中，暂不能修订。`,
+              `任务 ID：${baseTask.taskId}`,
+              '请待完成后再发起修订。',
+            ].join('\n'),
+          });
+          teeFeishuFlow('>>> ⑦ 响应', '200 任务进行中');
+          return;
+        }
+
+        const priorMd = baseTask.metadata?.requirementsMarkdown;
+        if (typeof priorMd !== 'string' || priorMd.trim() === '') {
+          respondFeishuJson(200, {
+            ok: false,
+            code: 'NO_PRIOR_PRD_MD',
+            feishuReplyText: [
+              '该任务下尚无可合并的 PRD 正文。',
+              `请先对已完成的任务确认是否已有「requirementsMarkdown」，或先发一次完整「需求分析：…」。`,
+              `任务 ID：${baseTask.taskId}`,
+            ].join('\n'),
+          });
+          teeFeishuFlow('>>> ⑦ 响应', '200 无上一版正文');
+          return;
+        }
+
+        const delta =
+          requirementMsgShape.instruction.trim() !== ''
+            ? requirementMsgShape.instruction.trim()
+            : '（本条未给出具体条文）请在保持上一版需求范围的前提下做一致性合并，仅修正矛盾、缺漏与表述。';
+
+        const mergedMeta: Record<string, unknown> = {
+          ...(baseTask.metadata ?? {}),
+          source: 'feishu_webhook',
+          ...rootMeta,
+          ...(channelId !== undefined ? { channelId } : {}),
+          lastRequirementsReviseInbound: text,
+          lastRequirementsReviseAt: new Date().toISOString(),
+        };
+
+        await taskStore.updateTask(baseTask.taskId, {
+          status: 'running',
+          message: text,
+          metadata: mergedMeta,
+        });
+
+        logger.info('任务已更新为修订运行中', {
+          flow: 'task',
+          taskId: baseTask.taskId,
+          action,
+        });
+        teeFeishuFlow('>>> ④ 修订（沿用任务）', baseTask.taskId);
+
+        logger.info('执行步骤', {
+          flow: 'execute',
+          taskId: baseTask.taskId,
+          step: 'requirements_agent_revise',
+          stage: 'start',
+        });
+        teeFeishuFlow('>>> ⑤ 执行中', '需求分析（修订）→ requirements-agent');
+
+        try {
+          const { analysis, task } = await runAnalyzeAndPersistRequirements({
+            taskRecord: { ...baseTask, metadata: mergedMeta },
+            rawForAgent: delta,
+            mode: 'revise',
+            priorPrdMarkdown: priorMd,
+          });
+          logger.info('执行步骤', {
+            flow: 'execute',
+            taskId: baseTask.taskId,
+            step: 'requirements_agent_revise',
+            stage: 'done',
+            taskStatus: 'completed',
+            prdStatus: analysis.prdStatus,
+          });
+          const preview =
+            analysis.markdown.length > 2500
+              ? `${analysis.markdown.slice(0, 2500)}\n\n…（已截断，完整 PRD 见任务 metadata.requirementsMarkdown）`
+              : analysis.markdown;
+          logger.info('返回响应', {
+            flow: 'respond',
+            httpStatus: 201,
+            taskId: baseTask.taskId,
+            action: 'requirements_analysis',
+            outcome: 'revised',
+          });
+          respondFeishuJson(
+            201,
+            {
+              ok: true,
+              task,
+              requirementsAnalysis: analysis,
+              requirementsReviseMode: true,
+              feishuReplyText: [
+                `【需求分析 · 修订】${analysis.prdStatus}｜同一任务 ${baseTask.taskId}`,
+                '',
+                preview,
+              ].join('\n'),
+            },
+            {
+              onOutboundSettled: (sr) => {
+                if (
+                  sr.kind === 'ok' &&
+                  sr.messageId !== undefined &&
+                  sr.messageId !== ''
+                ) {
+                  registerFeishuPrdOutboundAnchor(
+                    sr.messageId,
+                    baseTask.taskId
+                  );
+                }
+              },
+            }
+          );
+          teeFeishuFlow(
+            '>>> ⑦ 响应',
+            `201 需求分析修订完成 | ${analysis.prdStatus} | ${baseTask.taskId}`
+          );
+          return;
+        } catch (e) {
+          const errMsg = e instanceof Error ? e.message : String(e);
+          teeFeishuFlow('>>> ✖ 失败', `需求分析修订 ${errMsg.slice(0, 120)}`);
+          logger.warn('执行步骤', {
+            flow: 'execute',
+            taskId: baseTask.taskId,
+            step: 'requirements_agent_revise',
+            stage: 'failed',
+            error: errMsg,
+          });
+          await taskStore.updateTask(baseTask.taskId, {
+            status: 'failed',
+            metadata: {
+              ...mergedMeta,
+              requirementsRevisionError: errMsg,
+            },
+          });
+          throw new AppError(
+            'REQUIREMENTS_AGENT_FAILED',
+            `需求分析修订失败：${errMsg}`,
+            502
+          );
+        }
       }
 
       const gate = await assertNoConcurrentExclusiveTask(taskStore, action, {
@@ -336,21 +701,11 @@ export const registerFeishuWebhookRoutes = (
         });
         teeFeishuFlow('>>> ⑤ 执行中', '需求分析 → requirements-agent');
         try {
-          const analysis = await analyzeRequirementsHttp({
-            taskId: task.taskId,
-            rawRequirement: text,
-          });
-          const updated = await taskStore.updateTask(task.taskId, {
-            status: 'completed',
-            metadata: {
-              ...(task.metadata ?? {}),
-              requirementsMarkdown: analysis.markdown,
-              prdStatus: analysis.prdStatus,
-            },
-          });
-          if (updated === null) {
-            throw new AppError('INTERNAL', '更新任务失败（requirements）', 500);
-          }
+          const { analysis, task: completedTask } =
+            await runAnalyzeAndPersistRequirements({
+              taskRecord: task,
+              rawForAgent: text,
+            });
           logger.info('执行步骤', {
             flow: 'execute',
             taskId: task.taskId,
@@ -370,16 +725,30 @@ export const registerFeishuWebhookRoutes = (
             action: 'requirements_analysis',
             outcome: 'completed',
           });
-          respondFeishuJson(201, {
-            ok: true,
-            task: updated,
-            requirementsAnalysis: analysis,
-            feishuReplyText: [
-              `【需求分析】已完成（状态：${analysis.prdStatus}），任务 ID：${task.taskId}`,
-              '',
-              preview,
-            ].join('\n'),
-          });
+          respondFeishuJson(
+            201,
+            {
+              ok: true,
+              task: completedTask,
+              requirementsAnalysis: analysis,
+              feishuReplyText: [
+                `【需求分析】${analysis.prdStatus}｜任务 ${task.taskId}`,
+                '',
+                preview,
+              ].join('\n'),
+            },
+            {
+              onOutboundSettled: (sr) => {
+                if (
+                  sr.kind === 'ok' &&
+                  sr.messageId !== undefined &&
+                  sr.messageId !== ''
+                ) {
+                  registerFeishuPrdOutboundAnchor(sr.messageId, task.taskId);
+                }
+              },
+            }
+          );
           teeFeishuFlow(
             '>>> ⑦ 响应',
             `201 需求分析完成 | ${analysis.prdStatus} | ${task.taskId}`
@@ -691,6 +1060,19 @@ export const registerFeishuWebhookRoutes = (
         feishuReplyText: `已受理【${actionLabelZh(action)}】，任务 ID：${task.taskId}`,
       });
       teeFeishuFlow('>>> ⑦ 响应', `201 已受理 | ${action} | ${task.taskId}`);
+      };
+
+      try {
+        await runInbound();
+        if (inboundDedupKey !== null) {
+          finishFeishuInboundDedup(inboundDedupKey, true);
+        }
+      } catch (dedupInner: unknown) {
+        if (inboundDedupKey !== null) {
+          finishFeishuInboundDedup(inboundDedupKey, false);
+        }
+        throw dedupInner;
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       teeFeishuFlow('>>> ✖ 未捕获', msg.slice(0, 160));
