@@ -12,7 +12,8 @@
     "apps/test-agent": {},
     "packages/pipeline-core": {},
     "packages/logger": {},
-    "packages/http-errors": {}
+    "packages/http-errors": {},
+    "packages/agents-config": {}
   },
   "ignore": ["**/*.d.ts"],
   "ignoreBinaries": ["sleep"]

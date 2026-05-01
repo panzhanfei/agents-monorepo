@@ -1,0 +1,102 @@
+import type { ILogger } from '@agents/logger';
+import type {
+  IRequirementsAnalysisRequest,
+  IRequirementsAnalysisResponse,
+} from '@agents/pipeline-core';
+import type { ILlmEnvConfig } from '../config/env.js';
+import { chatCompletionText } from '../clients/llm-openai-compatible.js';
+import { REQUIREMENTS_PRD_SYSTEM_PROMPT } from '../prompts/prd-system.js';
+import {
+  stripTrailingPrdStatusLine,
+  validatePrdMarkdownStructure,
+} from './markdown-structure.js';
+
+export type IRequirementsAnalysisDeps = {
+  readonly logger: ILogger;
+  readonly llm: ILlmEnvConfig;
+};
+
+const buildUserPrompt = (
+  input: IRequirementsAnalysisRequest
+): string => {
+  const stackSection =
+    input.targetStackTargets !== undefined &&
+    input.targetStackTargets.length > 0
+      ? [
+          '下列「目标栈」须在 PRD 中体现其对范围的影响（勿编造未提及功能）：',
+          JSON.stringify(input.targetStackTargets, undefined, 2),
+          '',
+        ].join('\n')
+      : '';
+
+  return [
+    `taskId（追溯用）：${input.taskId}`,
+    '',
+    '原始需求：',
+    input.rawRequirement.trim(),
+    '',
+    stackSection,
+    '请输出符合系统规则的完整 PRD Markdown。',
+  ]
+    .filter((line) => line !== '')
+    .join('\n');
+};
+
+export const runRequirementsAnalysis = async (
+  input: IRequirementsAnalysisRequest,
+  deps: IRequirementsAnalysisDeps
+): Promise<IRequirementsAnalysisResponse> => {
+  if (deps.llm.model.trim() === '') {
+    deps.logger.warn('llm_model_empty', { taskId: input.taskId });
+  }
+
+  const messages = [
+    { role: 'system' as const, content: REQUIREMENTS_PRD_SYSTEM_PROMPT },
+    { role: 'user' as const, content: buildUserPrompt(input) },
+  ];
+
+  let rawText = '';
+  let attempt = 0;
+  const maxAttempts = deps.llm.maxRetries + 1;
+
+  while (attempt < maxAttempts) {
+    attempt += 1;
+    try {
+      rawText = await chatCompletionText(deps.llm, messages);
+      break;
+    } catch (e) {
+      deps.logger.warn('llm_attempt_failed', {
+        taskId: input.taskId,
+        attempt,
+        err: e instanceof Error ? e.message : String(e),
+      });
+      if (attempt >= maxAttempts) {
+        throw e;
+      }
+    }
+  }
+
+  const parsed = stripTrailingPrdStatusLine(rawText);
+  const structural = validatePrdMarkdownStructure(parsed.markdownBody);
+
+  if (!structural.ok) {
+    deps.logger.warn('prd_structure_invalid', {
+      taskId: input.taskId,
+      missing: structural.missing,
+    });
+    throw new Error(
+      `模型输出缺少必选章节：${structural.missing.join('、')}。请重试或调高模型能力。`
+    );
+  }
+
+  deps.logger.info('requirements_analysis_done', {
+    taskId: input.taskId,
+    prdStatus: parsed.prdStatus,
+  });
+
+  return {
+    taskId: input.taskId,
+    markdown: parsed.markdownBody,
+    prdStatus: parsed.prdStatus,
+  };
+};

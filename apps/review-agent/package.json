@@ -13,10 +13,13 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@agents/agents-config": "workspace:^",
     "@agents/http-errors": "workspace:^",
     "@agents/logger": "workspace:^",
     "@agents/pipeline-core": "workspace:^",
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "fast-glob": "^3.3.3",
+    "zod": "^4.4.1"
   },
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",

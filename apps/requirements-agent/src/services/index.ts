@@ -1,4 +1,9 @@
-/**
- * 需求分析编排：输入 → 模型 → 结构化输出校验。
- */
-export {};
+export {
+  runRequirementsAnalysis,
+  type IRequirementsAnalysisDeps,
+} from './requirements-analysis-service.js';
+export {
+  stripTrailingPrdStatusLine,
+  validatePrdMarkdownStructure,
+  type IParsedPrdMarkdown,
+} from './markdown-structure.js';

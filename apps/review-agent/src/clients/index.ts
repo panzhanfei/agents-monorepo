@@ -1,4 +1,5 @@
-/**
- * 门禁子进程、规则加载、评审模型客户端等。
- */
-export {};
+export {
+  chatCompletionText,
+  LlmTransportError,
+  type ILlmChatMessage,
+} from './llm-openai-compatible.js';

@@ -1,0 +1,71 @@
+import type { RequestHandler } from 'express';
+import { AppError } from '@agents/http-errors';
+import type { ILogger } from '@agents/logger';
+import {
+  BACKEND_STACK_PROFILES,
+  FRONTEND_STACK_PROFILES,
+} from '@agents/pipeline-core';
+import { z } from 'zod';
+import { getLlmEnvConfig } from '../config/env.js';
+import { LlmTransportError } from '../clients/llm-openai-compatible.js';
+import { runRequirementsAnalysis } from '../services/requirements-analysis-service.js';
+
+const targetSchema = z.discriminatedUnion('implementationRole', [
+  z.object({
+    implementationRole: z.literal('frontend'),
+    stackProfile: z.enum(FRONTEND_STACK_PROFILES),
+  }),
+  z.object({
+    implementationRole: z.literal('backend'),
+    stackProfile: z.enum(BACKEND_STACK_PROFILES),
+  }),
+]);
+
+export const requirementsAnalysisBodySchema = z.object({
+  taskId: z.string().min(1),
+  rawRequirement: z.string().min(1).max(200_000),
+  targetStackTargets: z.array(targetSchema).optional(),
+});
+
+export const createRequirementsAnalyzeHandler = (
+  logger: ILogger
+): RequestHandler => {
+  return async (req, res, next) => {
+    try {
+      const parsed = requirementsAnalysisBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        const detail = parsed.error.issues
+          .map((i) => `${i.path.join('.')}: ${i.message}`)
+          .join('; ');
+        throw new AppError('BAD_REQUEST', detail || 'Invalid body', 400);
+      }
+
+      const llm = getLlmEnvConfig();
+      const result = await runRequirementsAnalysis(parsed.data, {
+        logger,
+        llm,
+      });
+      res.json({ ok: true, ...result });
+    } catch (e) {
+      if (e instanceof AppError) {
+        next(e);
+        return;
+      }
+      if (e instanceof LlmTransportError) {
+        const sc = e.statusCode;
+        const status =
+          sc !== undefined && sc >= 400 && sc < 600 ? sc : 502;
+        next(new AppError('LLM_UPSTREAM', e.message, status));
+        return;
+      }
+      if (
+        e instanceof Error &&
+        e.message.includes('缺少必选章节')
+      ) {
+        next(new AppError('PRD_STRUCTURE_INVALID', e.message, 422));
+        return;
+      }
+      next(e);
+    }
+  };
+};

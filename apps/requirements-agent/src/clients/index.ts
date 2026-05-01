@@ -1,4 +1,5 @@
-/**
- * LLM / 模板加载等。
- */
-export {};
+export {
+  chatCompletionText,
+  LlmTransportError,
+  type ILlmChatMessage,
+} from './llm-openai-compatible.js';

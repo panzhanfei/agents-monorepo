@@ -9,14 +9,18 @@ import { requestContextPlaceholder } from './middlewares/request-context.js';
 import { registerRoutes } from './routes/index.js';
 import { SERVICE_NAME } from './config/constants.js';
 
-export const createApp = (): express.Express => {
+export type ICreateAppOptions = {
+  readonly monorepoRoot: string;
+};
+
+export const createApp = (opts: ICreateAppOptions): express.Express => {
   const logger = createLogger({ service: SERVICE_NAME });
   const app = express();
   app.disable('x-powered-by');
   applySecurityHeaders(app);
-  app.use(express.json({ limit: '1mb' }));
+  app.use(express.json({ limit: '4mb' }));
   app.use(requestContextPlaceholder);
-  registerRoutes(app, { logger });
+  registerRoutes(app, { logger, monorepoRoot: opts.monorepoRoot });
   app.use(notFoundHandler);
   app.use(createExpressErrorHandler({ logger }));
   return app;

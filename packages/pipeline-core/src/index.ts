@@ -32,3 +32,38 @@ export {
   ACTIVE_TASK_STATUSES,
   isActiveTaskStatus,
 } from './task-store.js';
+
+export type {
+  BackendStackProfile,
+  FrontendStackProfile,
+  ImplementationRole,
+  ITargetStackTarget,
+  StackProfile,
+} from './runtime-skills.js';
+export {
+  BACKEND_STACK_PROFILES,
+  FRONTEND_STACK_PROFILES,
+  isBackendStackProfile,
+  isFrontendStackProfile,
+  isValidTargetStackTarget,
+} from './runtime-skills.js';
+
+export type {
+  IRequirementsAnalysisRequest,
+  IRequirementsAnalysisResponse,
+  RequirementsPrdStatus,
+} from './requirements-contract.js';
+
+export type {
+  IReviewFinding,
+  IReviewGateCommandResult,
+  IReviewLlmSlice,
+  IReviewRunRequest,
+  IReviewRunResponse,
+  ReviewFindingSeverity,
+} from './review-contract.js';
+
+export type {
+  ITestRunRequest,
+  ITestRunResponse,
+} from './test-contract.js';

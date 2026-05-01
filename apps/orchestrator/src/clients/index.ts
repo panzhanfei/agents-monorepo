@@ -1,4 +1,10 @@
-/**
- * 外部系统客户端：飞书 / Git / HTTP 下游等（初始化放在此层）。
- */
-export {};
+export {
+  analyzeRequirementsHttp,
+  getRequirementsAgentBaseUrl,
+} from './requirements-agent-client.js';
+export {
+  getReviewAgentBaseUrl,
+  getTestAgentBaseUrl,
+  runReviewHttp,
+  runTestHttp,
+} from './review-test-agents-client.js';
