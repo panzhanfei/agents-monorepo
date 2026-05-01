@@ -26,6 +26,7 @@ alwaysApply: true
 
 - **编排与流水线**：跨通道（飞书 / Git / CI）的共享逻辑放在 **`packages/pipeline-core`** 或后续新增 **`packages/*`**，不要在多个 `apps/*` 复制。
 - **HTTP 编排入口**：`apps/orchestrator` 负责飞书/Webhook、任务状态与调用各 **Agent**（`requirements-agent`、`coding-agent`、`review-agent`、`test-agent`、`ops-agent`）；**不要**把编码/审核/测试执行/发布细节堆在 orchestrator，应分别落在对应 `apps/*` 或 `packages/*`。
+- **运行时 Skill 分层**（`implementationRole` / `stackProfile` / `opsMode` 等）：契约在 **`packages/pipeline-core`**，编排校验与透传在 **`apps/orchestrator`**，消费逻辑在各 **`apps/*-agent`**；约定见 **`runtime-skills-layering.mdc`** 与 **`docs/ARCHITECTURE.md` §15**。
 
 ## Monorepo：共享能力放在 `packages/`
 
@@ -38,4 +39,4 @@ alwaysApply: true
 - **测试文件**不要进业务 barrel。
 - **`packages/*`**：遵循各包 `package.json` `exports`。
 
-各应用细则见：`orchestrator-app.mdc`、`requirements-agent-app.mdc`、`coding-agent-app.mdc`、`review-agent-app.mdc`、`test-agent-app.mdc`、`ops-agent-app.mdc`、`pipeline-packages.mdc`。
+各应用细则见：`orchestrator-app.mdc`、`requirements-agent-app.mdc`、`coding-agent-app.mdc`、`review-agent-app.mdc`、`test-agent-app.mdc`、`ops-agent-app.mdc`、`pipeline-packages.mdc`、`runtime-skills-layering.mdc`。
