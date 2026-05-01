@@ -38,10 +38,12 @@
 **读取策略**：
 
 - **orchestrator**：需要 **聚合视图**（安全、飞书、下游 Agent 基址、目标工作区等）。
-- **各 Agent**：理想为 **最小子集**（本服务端口、超时、`TARGET_WORKSPACE_PATH` 等），避免每个 Agent 再充当全局配置中心。
-- **实现落点**：推荐共享 **`loadAgentsConfig()`**（或等价模块）统一解析与 **Zod 校验**，而非分散在多 app 内重复读文件。
+- **各 Agent**：理想为 **最小子集**（本服务端口、超时、`TARGET_WORKSPACE_PATH` **或单次请求体内的** `workspacePath` 字段等），避免每个 Agent 再充当全局配置中心。
+- **实现落点**：共享 **`loadAgentsConfig()`**（`@agents/agents-config`）解析 `agents.config.yaml` 并经 **Zod 校验**，而非分散重复读文件。
 
-**客户业务仓前置条件**：编码 / 测试 / 审核均在 **`TARGET_WORKSPACE_PATH`** 下执行客户项目命令；架构上须在文档或自检中约定 **Node / pnpm（或包管理器）/ 可选 Turbo 版本** 与客户仓一致，否则「模板里能跑、客户仓里挂」的漂移属于 **环境类问题**，不靠编排代码单独解决。
+**多客户业务仓库（可选）**：`agents.config.yaml` 可在 `target.projects` 中登记多个 `{ id, workspacePath, label? }`。**飞书链路**由 orchestrator 解析「本会话绑定 / 本条首行目标 / env 默认 id」后用 **解析得到的绝对路径** 调用编码、审核与测试 Agent（契约字段 `workspacePath`，与单机 `TARGET_WORKSPACE_PATH` 等价位）。详见 `docs/FEISHU_COMMANDS.md`。未配置 `projects` 时行为与单目标一致。
+
+**客户业务仓前置条件**：实际执行仍以 **某一个解析后的 workspace 根** 为客户项目 cwd；须在文档或自检中约定 **Node / pnpm（或包管理器）/ 可选 Turbo 版本** 与客户仓一致，否则「模板里能跑、客户仓里挂」的漂移属于 **环境类问题**，不靠编排代码单独解决。
 
 ---
 

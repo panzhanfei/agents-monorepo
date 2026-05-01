@@ -26,6 +26,9 @@ importers:
 
   apps/coding-agent:
     dependencies:
+      '@agents/agents-config':
+        specifier: workspace:^
+        version: link:../../packages/agents-config
       '@agents/http-errors':
         specifier: workspace:^
         version: link:../../packages/http-errors
@@ -38,6 +41,9 @@ importers:
       express:
         specifier: ^4.21.2
         version: 4.22.1
+      zod:
+        specifier: ^4.4.1
+        version: 4.4.1
     devDependencies:
       '@repo/eslint-config':
         specifier: workspace:*
@@ -112,6 +118,9 @@ importers:
 
   apps/orchestrator:
     dependencies:
+      '@agents/agents-config':
+        specifier: workspace:^
+        version: link:../../packages/agents-config
       '@agents/http-errors':
         specifier: workspace:^
         version: link:../../packages/http-errors

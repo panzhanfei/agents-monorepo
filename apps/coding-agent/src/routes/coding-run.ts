@@ -6,6 +6,7 @@ import { createCodingRunHandler } from '../handlers/coding-run.js';
 
 export type ICodingRunRoutesCtx = {
   logger: ILogger;
+  monorepoRoot: string;
 };
 
 export const registerCodingRunRoutes = (
@@ -16,6 +17,6 @@ export const registerCodingRunRoutes = (
   app.post(
     '/v1/coding/run',
     optionalInternalBearer(token),
-    createCodingRunHandler(ctx.logger)
+    createCodingRunHandler(ctx.logger, ctx.monorepoRoot)
   );
 };

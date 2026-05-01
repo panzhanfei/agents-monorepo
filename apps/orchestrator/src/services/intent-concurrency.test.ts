@@ -23,6 +23,13 @@ describe('intent-concurrency', () => {
     expect(parseIntentFromMessage('编码：修 login')).toBe('code');
   });
 
+  it('parseIntentFromMessage detects list_targets and select_target', () => {
+    expect(parseIntentFromMessage('目标列表')).toBe('list_targets');
+    expect(parseIntentFromMessage('指令：目标列表')).toBe('list_targets');
+    expect(parseIntentFromMessage('切换目标：app-a')).toBe('select_target');
+    expect(parseIntentFromMessage('绑定目标 app-b')).toBe('select_target');
+  });
+
   it('parseIntentFromMessage detects requirements', () => {
     expect(parseIntentFromMessage('指令：需求分析\n说明…')).toBe(
       'requirements_analysis'

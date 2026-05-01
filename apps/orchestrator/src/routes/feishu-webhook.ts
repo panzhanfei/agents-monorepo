@@ -1,7 +1,16 @@
 import type { Express, Request, Response, NextFunction } from 'express';
 import type { ILogger } from '@agents/logger';
 import type { ITaskStore, IRequirementsAnalysisResponse } from '@agents/pipeline-core';
+import path from 'node:path';
 import { AppError } from '@agents/http-errors';
+import {
+  extractLeadingTargetDirective,
+  isMultiTargetAgentsConfig,
+  loadAgentsConfig,
+  normalizeTargetProjects,
+  parseSelectTargetMessage,
+  resolveFeishuTaskWorkspace,
+} from '@agents/agents-config';
 import {
   parseIntentFromMessage,
   ACTIONS_SKIP_CONCURRENCY_GUARD,
@@ -36,6 +45,15 @@ import {
   finishFeishuInboundDedup,
 } from '../services/feishu-inbound-dedup.js';
 import { teeFeishuFlow } from '../services/tee-feishu-flow.js';
+import {
+  buildAmbiguousTargetFeishuReply,
+  buildConfiguredTargetsBulletLines,
+} from '../services/feishu-multi-target-replies.js';
+import {
+  getFeishuChannelBoundTargetId,
+  setFeishuChannelBoundTargetId,
+} from '../services/feishu-channel-target.js';
+import { getOrchestratorMonorepoRoot } from '../config/monorepo-root.js';
 
 const previewText = (t: string, max = 120): string =>
   t.length <= max ? t : `${t.slice(0, max)}…`;
@@ -142,6 +160,13 @@ export const registerFeishuWebhookRoutes = (
           ? extracted.inboundMessageId
           : undefined;
 
+      let workspaceResolution:
+        | {
+            workspacePathAbsolute: string;
+            targetProjectId?: string;
+          }
+        | undefined;
+      let instructionBodyForWorkspaceActions = text;
       const quotedThreadTaskId = resolveTaskIdFromQuotedFeishuMessage({
         parentMessageId: extracted.parentMessageId,
         rootMessageId: extracted.rootMessageId,
@@ -366,6 +391,101 @@ export const registerFeishuWebhookRoutes = (
         return;
       }
 
+      if (action === 'list_targets') {
+        const monorepoRoot = getOrchestratorMonorepoRoot();
+        const cfg = await loadAgentsConfig({ monorepoRoot }, process.env);
+        const ps = normalizeTargetProjects(cfg);
+        if (ps.length === 0) {
+          respondFeishuJson(200, {
+            ok: true,
+            action: 'list_targets',
+            feishuReplyText: [
+              '当前为单目标模式：未配置 `agents.config.yaml` 的 `target.projects`。',
+              '工作区由 `TARGET_WORKSPACE_PATH` 与可选的 `target.workspacePath` 解析，见 `.env.example`。',
+            ].join('\n'),
+          });
+          teeFeishuFlow('>>> ⑦ 响应', '200 target 列表 单目标');
+          return;
+        }
+        respondFeishuJson(200, {
+          ok: true,
+          action: 'list_targets',
+          feishuReplyText: [
+            '已配置目标项目：',
+            buildConfiguredTargetsBulletLines(ps),
+            '',
+            ...(isMultiTargetAgentsConfig(cfg)
+              ? [
+                  '多仓库时请先「切换目标：<id>」或在消息首行写「目标：<id>」（第二行起写编码/审核/测试）。',
+                ]
+              : ['当前仅此一条目录映射，会话内会自动使用该目录。']),
+          ].join('\n'),
+        });
+        teeFeishuFlow('>>> ⑦ 响应', `200 target 列表 ${String(ps.length)}`);
+        return;
+      }
+
+      if (action === 'select_target') {
+        const selIdRaw = parseSelectTargetMessage(text);
+        if (selIdRaw === null) {
+          respondFeishuJson(200, {
+            ok: false,
+            code: 'SELECT_TARGET_PARSE_ERROR',
+            feishuReplyText:
+              '无法解析目标 id。请发送：`切换目标：<id>`（id 见「目标列表」）。',
+          });
+          teeFeishuFlow('>>> ⑦ 响应', '200 切换目标解析失败');
+          return;
+        }
+        const selId = selIdRaw.trim();
+        const monorepoRoot = getOrchestratorMonorepoRoot();
+        const cfg = await loadAgentsConfig({ monorepoRoot }, process.env);
+        const ps = normalizeTargetProjects(cfg);
+        if (ps.length === 0) {
+          respondFeishuJson(200, {
+            ok: false,
+            code: 'TARGET_PROJECTS_NOT_CONFIGURED',
+            feishuReplyText:
+              '未配置 `target.projects`，无需切换。请用单一 `TARGET_WORKSPACE_PATH`。见 `.env.example`。',
+          });
+          teeFeishuFlow('>>> ⑦ 响应', '200 未启用多目标');
+          return;
+        }
+        const index = new Map(ps.map((p) => [p.id, p]));
+        const hit = index.get(selId);
+        if (hit === undefined) {
+          respondFeishuJson(200, {
+            ok: false,
+            code: 'TARGET_PROJECT_UNKNOWN',
+            feishuReplyText: [
+              `未找到目标 id：「${selId}」。`,
+              '',
+              '已配置：',
+              buildConfiguredTargetsBulletLines(ps),
+            ].join('\n'),
+          });
+          teeFeishuFlow('>>> ⑦ 响应', '200 切换目标 id 无效');
+          return;
+        }
+        setFeishuChannelBoundTargetId(channelId, selId);
+        const abs = path.isAbsolute(hit.workspacePath)
+          ? hit.workspacePath
+          : path.resolve(monorepoRoot, hit.workspacePath);
+        respondFeishuJson(200, {
+          ok: true,
+          action: 'select_target',
+          feishuReplyText: [
+            `已绑定会话目标：**${hit.id}**`,
+            '',
+            `\`${abs}\``,
+            '',
+            '后续的「编码 / 审核 / 全量测试」默认在此目录执行（本条可多行并以首行「目标：<id>」临时覆盖）。',
+          ].join('\n'),
+        });
+        teeFeishuFlow('>>> ⑦ 响应', `200 切换目标 ${hit.id}`);
+        return;
+      }
+
       if (ACTIONS_SKIP_CONCURRENCY_GUARD.has(action)) {
         const reply = `「${actionLabelZh(action)}」尚未接入，请发「帮助」查看当前已支持的指令。`;
         logger.info('返回响应', {
@@ -385,23 +505,85 @@ export const registerFeishuWebhookRoutes = (
         return;
       }
 
-      if (action === 'code') {
-        const codingPrereqs = collectCodingFeishuPrereqIssues();
-        if (codingPrereqs.length > 0) {
+      const needsTargetResolution =
+        action === 'code' || action === 'review' || action === 'test';
+
+      if (needsTargetResolution) {
+        const monorepoRoot = getOrchestratorMonorepoRoot();
+        const extractedLead = extractLeadingTargetDirective(text);
+        instructionBodyForWorkspaceActions = extractedLead.rest;
+        const agentsCfg = await loadAgentsConfig(
+          { monorepoRoot },
+          process.env
+        );
+        const pick = resolveFeishuTaskWorkspace(
+          monorepoRoot,
+          process.env,
+          agentsCfg,
+          {
+            channelBoundTargetId: getFeishuChannelBoundTargetId(channelId),
+            inlineTargetId: extractedLead.targetId,
+          }
+        );
+        if (pick.kind === 'ambiguous') {
           logger.info('返回响应', {
             flow: 'respond',
             httpStatus: 200,
-            kind: 'coding_prerequisites_missing',
-            issues: codingPrereqs,
+            kind: 'target_projects_ambiguous',
           });
           respondFeishuJson(200, {
             ok: false,
-            code: 'CODING_PREREQUISITES_MISSING',
-            issues: codingPrereqs,
-            feishuReplyText: buildCodingPrereqBlockedFeishuReply(codingPrereqs),
+            code: 'TARGET_PROJECT_AMBIGUOUS',
+            feishuReplyText: buildAmbiguousTargetFeishuReply(
+              normalizeTargetProjects(agentsCfg)
+            ),
           });
-          teeFeishuFlow('>>> ⑦ 响应', '200 编码前置配置缺失');
+          teeFeishuFlow('>>> ⑦ 响应', '200 多目标歧义');
           return;
+        }
+        if (pick.kind === 'unknown_id') {
+          logger.info('返回响应', {
+            flow: 'respond',
+            httpStatus: 200,
+            kind: 'target_projects_unknown_id',
+          });
+          respondFeishuJson(200, {
+            ok: false,
+            code: 'TARGET_PROJECT_UNKNOWN',
+            feishuReplyText: [
+              `未找到目标项目 id：「${pick.targetId}」。`,
+              '',
+              '发「目标列表」查看已配置的 id，或检查拼写。',
+            ].join('\n'),
+          });
+          teeFeishuFlow('>>> ⑦ 响应', '200 目标 id 无效');
+          return;
+        }
+        workspaceResolution = {
+          workspacePathAbsolute: pick.workspacePathAbsolute,
+          targetProjectId: pick.targetProjectId,
+        };
+        if (action === 'code') {
+          const codingPrereqs = collectCodingFeishuPrereqIssues(process.env, {
+            effectiveWorkspacePathTrimmed: pick.workspacePathAbsolute,
+          });
+          if (codingPrereqs.length > 0) {
+            logger.info('返回响应', {
+              flow: 'respond',
+              httpStatus: 200,
+              kind: 'coding_prerequisites_missing',
+              issues: codingPrereqs,
+            });
+            respondFeishuJson(200, {
+              ok: false,
+              code: 'CODING_PREREQUISITES_MISSING',
+              issues: codingPrereqs,
+              feishuReplyText:
+                buildCodingPrereqBlockedFeishuReply(codingPrereqs),
+            });
+            teeFeishuFlow('>>> ⑦ 响应', '200 编码前置配置缺失');
+            return;
+          }
         }
       }
 
@@ -681,6 +863,13 @@ export const registerFeishuWebhookRoutes = (
           ...rootMeta,
           source: 'feishu_webhook',
           ...(channelId !== undefined ? { channelId } : {}),
+          ...(workspaceResolution !== undefined
+            ? {
+                targetProjectId: workspaceResolution.targetProjectId,
+                resolvedTargetWorkspacePath:
+                  workspaceResolution.workspacePathAbsolute,
+              }
+            : {}),
         },
       });
 
@@ -791,7 +980,10 @@ export const registerFeishuWebhookRoutes = (
         try {
           const codingResult = await runCodingHttp({
             taskId: task.taskId,
-            instruction: text,
+            instruction: instructionBodyForWorkspaceActions,
+            ...(workspaceResolution !== undefined
+              ? { workspacePath: workspaceResolution.workspacePathAbsolute }
+              : {}),
           });
           const updated = await taskStore.updateTask(task.taskId, {
             status: 'completed',
@@ -874,6 +1066,9 @@ export const registerFeishuWebhookRoutes = (
         try {
           const review = await runReviewHttp({
             taskId: task.taskId,
+            ...(workspaceResolution !== undefined
+              ? { workspacePath: workspaceResolution.workspacePathAbsolute }
+              : {}),
           });
           const summarySnippet =
             review.llm.summaryMarkdown.length > 1800
@@ -970,6 +1165,9 @@ export const registerFeishuWebhookRoutes = (
         try {
           const testResult = await runTestHttp({
             taskId: task.taskId,
+            ...(workspaceResolution !== undefined
+              ? { workspacePath: workspaceResolution.workspacePathAbsolute }
+              : {}),
           });
           const updated = await taskStore.updateTask(task.taskId, {
             status: testResult.passed ? 'completed' : 'failed',

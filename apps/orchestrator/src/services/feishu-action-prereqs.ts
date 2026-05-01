@@ -7,11 +7,26 @@ export type ICodingFeishuPrereqIssue =
   | 'missing_target_workspace_path'
   | 'invalid_coding_agent_base_url';
 
+export type ICodingFeishuPrereqsOptions = {
+  /**
+   * 由编排解析后的客户业务仓库根路径（trim 非空）；若给定则不再强求 `TARGET_WORKSPACE_PATH`
+   * 环境变量必填（多目标 / 仅从 YAML 提供路径时使用）。
+   */
+  readonly effectiveWorkspacePathTrimmed?: string;
+};
+
 export const collectCodingFeishuPrereqIssues = (
-  env: NodeJS.ProcessEnv = process.env
+  env: NodeJS.ProcessEnv = process.env,
+  opts?: ICodingFeishuPrereqsOptions
 ): ICodingFeishuPrereqIssue[] => {
   const issues: ICodingFeishuPrereqIssue[] = [];
-  const workspace = env.TARGET_WORKSPACE_PATH?.trim() ?? '';
+  const trimmedOpt =
+    opts?.effectiveWorkspacePathTrimmed !== undefined &&
+    opts.effectiveWorkspacePathTrimmed.trim() !== ''
+      ? opts.effectiveWorkspacePathTrimmed.trim()
+      : undefined;
+  const workspace =
+    trimmedOpt ?? (env.TARGET_WORKSPACE_PATH?.trim() ?? '');
   if (workspace === '') {
     issues.push('missing_target_workspace_path');
   }
@@ -41,10 +56,9 @@ export const buildCodingPrereqBlockedFeishuReply = (
 
   if (issues.includes('missing_target_workspace_path')) {
     lines.push(
-      '■ 必填：TARGET_WORKSPACE_PATH',
-      '  含义：客户业务项目根目录，编码 / 审核 / 全量测试都会在该目录下执行。',
-      '  示例：`./workspace/target-repo`（相对 monorepo 根）或本机绝对路径。',
-      '  说明：未设置时，coding-agent 视为「未绑定工作区」，编排侧会直接拦截。',
+      '■ 工作区缺失',
+      '  编排器无法解析可用的客户仓库根路径。请任选其一：`TARGET_WORKSPACE_PATH`（见 `.env`）；或在 `agents.config.yaml` 的 `target.projects`（多目标）；或先于飞书会话「切换目标：<id>」/「目标列表」。',
+      '  （当编排器解析出绝对路径并由请求体下发 `workspacePath` 给 coding-agent 时，可无 `TARGET_WORKSPACE_PATH`。）',
       ''
     );
   }

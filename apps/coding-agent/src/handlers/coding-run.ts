@@ -1,32 +1,39 @@
 import type { RequestHandler } from 'express';
 import { AppError } from '@agents/http-errors';
 import type { ILogger } from '@agents/logger';
+import { resolveWorkspacePath } from '@agents/agents-config';
+import { z } from 'zod';
 
 const maxInstructionChars = 200_000;
 
-export const createCodingRunHandler = (logger: ILogger): RequestHandler => {
+const codingRunBodySchema = z.object({
+  taskId: z.string().min(1),
+  instruction: z.string().min(1).max(maxInstructionChars),
+  workspacePath: z.string().optional(),
+});
+
+export const createCodingRunHandler = (
+  logger: ILogger,
+  monorepoRoot: string
+): RequestHandler => {
   return (req, res, next) => {
     try {
-      const body = req.body as { taskId?: unknown; instruction?: unknown };
-      const taskId = typeof body.taskId === 'string' ? body.taskId : '';
-      const instruction =
-        typeof body.instruction === 'string' ? body.instruction : '';
-      if (taskId === '' || instruction.trim() === '') {
-        throw new AppError(
-          'BAD_REQUEST',
-          'taskId（非空字符串）与 instruction（非空字符串）必填',
-          400
-        );
+      const parsed = codingRunBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        const detail = parsed.error.issues
+          .map((i) => `${i.path.join('.')}: ${i.message}`)
+          .join('; ');
+        throw new AppError('BAD_REQUEST', detail || 'Invalid body', 400);
       }
-      if (instruction.length > maxInstructionChars) {
-        throw new AppError(
-          'BAD_REQUEST',
-          `instruction 过长（>${String(maxInstructionChars)}）`,
-          400
-        );
-      }
+      const { taskId, instruction, workspacePath: workspacePathBody } =
+        parsed.data;
 
-      const workspace = process.env.TARGET_WORKSPACE_PATH?.trim() ?? '';
+      const workspace = resolveWorkspacePath(
+        monorepoRoot,
+        workspacePathBody !== undefined && workspacePathBody.trim() !== ''
+          ? workspacePathBody.trim()
+          : process.env.TARGET_WORKSPACE_PATH
+      );
       logger.info('coding_run_accepted', {
         taskId,
         instructionLen: instruction.length,
@@ -44,7 +51,7 @@ export const createCodingRunHandler = (logger: ILogger): RequestHandler => {
         '',
         workspace !== ''
           ? `绑定工作区：\`${workspace}\`（请在本地按说明开发或由后续版本接入自动修改）。`
-          : '未配置 `TARGET_WORKSPACE_PATH` 时，请在 `.env` 中设置后再跑实际编码。',
+          : '未配置 `TARGET_WORKSPACE_PATH` 且请求体未带 `workspacePath` 时，请在 `.env` 中设置或由编排器下发路径后再跑实际编码。',
         '',
         '### 需求/说明原文',
         '',

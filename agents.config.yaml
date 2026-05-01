@@ -32,6 +32,15 @@ target:
   defaultBranch: main
   # git：clone 目的地；local：客户本机项目根目录（推荐绝对路径）
   workspacePath: ./workspace/target-repo
+  # --- 可选：多目标（≥2 条时飞书「编码/审核/全量测试」须切换或写明目标） ---
+  # defaultProjectId: svc-a
+  # projects:
+  #   - id: svc-a
+  #     workspacePath: ./workspace/backend
+  #     label: API 服务
+  #   - id: web-b
+  #     workspacePath: ./workspace/web-app
+  #     label: 前端 SPA
 
 pipeline:
   fullTestCommand: "pnpm run test && pnpm run e2e"

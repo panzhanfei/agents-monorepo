@@ -1,4 +1,10 @@
-export { agentsConfigSchema, type IAgentsConfig } from './schema.js';
+export {
+  agentsConfigSchema,
+  agentsTargetSchema,
+  targetProjectEntrySchema,
+  type IAgentsConfig,
+  type ITargetProjectEntry,
+} from './schema.js';
 export {
   loadAgentsConfig,
   resolveAgentsConfigPath,
@@ -6,6 +12,15 @@ export {
 } from './load-agents-config.js';
 export { resolveMonorepoRootFromEntry } from './monorepo-root.js';
 export { resolveWorkspacePath } from './resolve-workspace-path.js';
+export {
+  extractLeadingTargetDirective,
+  isMultiTargetAgentsConfig,
+  normalizeTargetProjects,
+  parseSelectTargetMessage,
+  resolveFeishuTaskWorkspace,
+  resolveLegacyTargetWorkspace,
+  type IResolveFeishuTaskTargetResult,
+} from './resolve-feishu-task-target.js';
 export {
   resolveReviewExecutionConfig,
   type IResolvedReviewExecutionConfig,

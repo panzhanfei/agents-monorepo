@@ -56,9 +56,20 @@ describe('feishu-action-prereqs', () => {
     ).toEqual([]);
   });
 
+  it('collectCodingFeishuPrereqIssues passes when effective workspace from orchestrator', () => {
+    expect(
+      collectCodingFeishuPrereqIssues(
+        { TARGET_WORKSPACE_PATH: '' },
+        { effectiveWorkspacePathTrimmed: '/tmp/client-app' }
+      )
+    ).toEqual([]);
+  });
+
   it('buildCodingPrereqBlockedFeishuReply mentions each issue theme', () => {
-    const one = buildCodingPrereqBlockedFeishuReply(['missing_target_workspace_path']);
-    expect(one).toContain('TARGET_WORKSPACE_PATH');
+    const one = buildCodingPrereqBlockedFeishuReply([
+      'missing_target_workspace_path',
+    ]);
+    expect(one).toContain('工作区');
 
     const two = buildCodingPrereqBlockedFeishuReply([
       'missing_target_workspace_path',

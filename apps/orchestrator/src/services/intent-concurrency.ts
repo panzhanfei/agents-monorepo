@@ -20,6 +20,8 @@ export const ACTION_LABEL_ZH: Record<string, string> = {
   workflow_continue: '继续流程',
   workflow_pause: '暂停流程',
   help: '新手指引',
+  list_targets: '目标列表',
+  select_target: '切换目标',
 };
 
 export const actionLabelZh = (action: string): string =>
@@ -62,6 +64,16 @@ export const parseIntentFromMessage = (text: string): string | null => {
     /^agent\s*指南\s*$/i.test(t)
   ) {
     return 'help';
+  }
+  if (/^\s*(?:指令[:：]\s*)?目标列表\s*$/i.test(t)) {
+    return 'list_targets';
+  }
+  if (
+    /^(?:指令[:：]\s*)?(?:切换目标|绑定目标|选择目标)[:：\s]+[a-zA-Z0-9][-a-zA-Z0-9_]*\s*$/i.test(
+      t
+    )
+  ) {
+    return 'select_target';
   }
   if (/一键(?:发布|测试打包发包)|full_release/i.test(t)) {
     return 'full_release';

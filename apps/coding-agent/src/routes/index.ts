@@ -6,6 +6,7 @@ import { SERVICE_LABEL, SERVICE_NAME } from '../config/constants.js';
 
 export type IRoutesContext = {
   logger: ILogger;
+  monorepoRoot: string;
 };
 
 export const registerRoutes = (app: Express, ctx: IRoutesContext): void => {
@@ -14,5 +15,8 @@ export const registerRoutes = (app: Express, ctx: IRoutesContext): void => {
     agent: SERVICE_NAME,
     label: SERVICE_LABEL,
   });
-  registerCodingRunRoutes(app, { logger: ctx.logger });
+  registerCodingRunRoutes(app, {
+    logger: ctx.logger,
+    monorepoRoot: ctx.monorepoRoot,
+  });
 };

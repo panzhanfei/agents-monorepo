@@ -2,6 +2,8 @@
 export interface ICodingRunRequest {
   readonly taskId: string;
   readonly instruction: string;
+  /** 覆盖进程内默认路径；一般由编排器根据 `agents.config.yaml` 多目标或 env 解析为绝对路径。 */
+  readonly workspacePath?: string;
 }
 
 export interface ICodingRunResponse {
