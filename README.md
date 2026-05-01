@@ -27,6 +27,7 @@
 | `e2e` | Playwright：并行拉起各应用的 `/health` 冒烟 |
 | `agents.config.yaml` | `pipeline.fullTestCommand` / `publishCommand`、`review.aiRulesGlob` |
 | `docs/FEISHU_COMMANDS.md` | 飞书侧 **指令格式与示例**（复盘） |
+| `docs/CUSTOMER_GUIDE.md` | **客户导引**：首次接触时各 Agent 分工、推荐顺序；与飞书 **「帮助」**（§0）配合 |
 | `docs/ARCHITECTURE.md` | **架构**：信任边界、契约、配置与状态、同步/异步、ops 拆分、**HTTP 栈（Node + Express §13）** 等 |
 | `docs/IMPLEMENTATION_ROADMAP.md` | **实践顺序与工程建议**（由里到外；含首个 Agent **本周验收 Checklist** 二选一） |
 
@@ -61,14 +62,23 @@ flowchart TB
     Feishu[飞书消息 / Webhook]
   end
   subgraph orch [编排]
-    Orch[orchestrator]
+    Orch[orchestrator\n任务状态 · action 路由]
   end
   subgraph agents [专属 Agent]
     Req[requirements-agent\n需求分析 / PRD]
-    Cod[coding-agent\n编码]
-    Rev[review-agent\n门禁 + AI 审核]
-    Tst[test-agent\n全量测试 / 报告]
+    subgraph impl [实现 + 验证·v1 带栈上下文]
+      direction TB
+      Cod[coding-agent\n编码]
+      Rev[review-agent\n门禁 + AI 审核]
+      Tst[test-agent\n全量测试 / 报告]
+    end
     Ops[ops-agent\n打包 / 发布 / 巡检]
+  end
+  subgraph skill_ctx [脱离编辑器·运行时 Skill 载荷 v1]
+    direction LR
+    Role[implementationRole\n见 ARCHITECTURE §15]
+    Stack[stackProfile\n见 ARCHITECTURE §15]
+    OpsMode[opsMode\npublish / patrol / ...]
   end
   subgraph shared [共享]
     Core[pipeline-core\n步骤类型 / 扩展 DTO]
@@ -79,6 +89,18 @@ flowchart TB
   Orch --> Rev
   Orch --> Tst
   Orch --> Ops
+  Orch -. v1 载荷 .-> Role
+  Orch -. v1 载荷 .-> Stack
+  Orch -. v1 载荷 .-> OpsMode
+  Role -. 可选 targetStackTargets .-> Req
+  Stack -. 可选 targetStackTargets .-> Req
+  Role -.-> Cod
+  Stack -.-> Cod
+  Role -.-> Rev
+  Stack -.-> Rev
+  Role -.-> Tst
+  Stack -.-> Tst
+  OpsMode -.-> Ops
   Req --> Core
   Cod --> Core
   Rev --> Core

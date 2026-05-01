@@ -18,6 +18,7 @@ export const ACTION_LABEL_ZH: Record<string, string> = {
   cancel: '取消任务',
   workflow_continue: '继续流程',
   workflow_pause: '暂停流程',
+  help: '新手指引',
 };
 
 export const actionLabelZh = (action: string): string =>
@@ -26,6 +27,7 @@ export const actionLabelZh = (action: string): string =>
 /** 不创建独占型「作业任务」、不做同动作并发拦截（仍可能走别的逻辑）。 */
 export const ACTIONS_SKIP_CONCURRENCY_GUARD = new Set([
   'status',
+  'help',
   'cancel',
   'workflow_continue',
   'workflow_pause',
@@ -39,6 +41,13 @@ export const parseIntentFromMessage = (text: string): string | null => {
   const t = text.trim();
   if (t === '') {
     return null;
+  }
+  if (
+    /^(?:帮助|新手指引|新手入门|使用说明)\s*$|^help\s*$/i.test(t) ||
+    /^指令[:：]\s*(?:帮助|新手指引|新手入门)\s*$/i.test(t) ||
+    /^agent\s*指南\s*$/i.test(t)
+  ) {
+    return 'help';
   }
   if (/一键(?:发布|测试打包发包)|full_release/i.test(t)) {
     return 'full_release';

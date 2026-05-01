@@ -168,11 +168,92 @@
 | 文档 | 内容 |
 |------|------|
 | [IMPLEMENTATION_ROADMAP.md](./IMPLEMENTATION_ROADMAP.md) | 由里到外的 **实现顺序** 与首个 Agent 验收 Checklist |
-| [FEISHU_COMMANDS.md](./FEISHU_COMMANDS.md) | 飞书指令格式与验证码 |
+| [FEISHU_COMMANDS.md](./FEISHU_COMMANDS.md) | 飞书指令格式与验证码（含 **§0 帮助 / `help`**） |
+| [CUSTOMER_GUIDE.md](./CUSTOMER_GUIDE.md) | 客户侧 **首次接触导引**（与群内「帮助」文案互补） |
 | `README.md` | 拓扑图与命令入口 |
 | `.cursor/rules/orchestrator-app.mdc` 等 | 各 app 分层与目录习惯 |
 | `.cursor/rules/ops-agent-app.mdc` | ops-agent 职责与安全 |
 
 ---
 
-*架构随实现迭代可修订本文；重大边界变更建议同步契约版本与 Release Note。§8–§11 对应前述风险域在规划期的纳入约定；§12 为 ops-agent 拆分策略；§13 为 HTTP 技术栈。实现时可逐条对照验收。*
+## 15. 运行时 Skill 划分（v1）
+
+本节是 **脱离 Cursor、由编排调度** 的一版完整约定：**六段流水线各自对应一个 Skill 域**（仍为同一批 Agent 进程）；差异体现在 **任务载荷**（建议收敛进 `pipeline-core` DTO），而非首日拆更多 HTTP 服务。
+
+### 15.1 六段 Skill 域与 v1 载荷
+
+| Skill 域（阶段） | 主要进程 | v1 载荷要点 |
+|------------------|----------|-------------|
+| **需求分析** | `requirements-agent` | 可选 **`targetStackTargets`**：`{ implementationRole, stackProfile }[]`，用于 PRD/验收对齐多面前端或前后端 |
+| **编码** | `coding-agent` | **必选**（当进入实现类 action）：`implementationRole` + `stackProfile`（枚举见 15.4） |
+| **审核** | `review-agent` | 与 **编码** **同链路同源**：同一组 `implementationRole` + `stackProfile` |
+| **测试** | `test-agent` | v1 **携带与实现一致**的 `implementationRole` + `stackProfile`，用于报告维度、可选的按面用例说明；**执行命令**仍以 `agents.config.yaml` 的 `pipeline.fullTestCommand` 等为真源，由客户仓吸收栈差异 |
+| **发布** | `ops-agent` | **`opsMode: publish`**（或等价枚举）；具体 build/发放脚本仍由配置驱动 |
+| **巡检** | `ops-agent` | **`opsMode: patrol`**；与发布 **权限与频率** 隔离（参见 §12） |
+
+### 15.2 通用字段
+
+| 字段 | 说明 |
+|------|------|
+| **`implementationRole`** | `frontend` · `backend` · `fullstack`。**`fullstack`** 时编排器可对同一需求 **顺序或并行** 下发多条实现子链（各带子 `stackProfile`），或在契约中约定「主链 + 附链」；v1 文档以 **每条载荷单一 role** 为准。 |
+| **`stackProfile`** | 与 `implementationRole` 组合的 **封闭枚举**（15.4）；未在表内的取值应 **拒绝** 或 **显式降级策略**（人工/默认 profile），并记录审计。 |
+| **`opsMode`** | `publish` · `patrol` ·（可选）`backup` · `rollback`；与飞书 `action` / `PipelineStepKind` 的映射须单一事实来源，避免文案与内部枚举分叉（对齐 §8）。 |
+
+**一致性**：`coding-agent` → `review-agent` → `test-agent` 在 **同一实现任务** 上应传递 **相同的 `implementationRole` + `stackProfile`**（`fullstack` 多子链时各自一条）。
+
+### 15.3 `targetStackTargets`（需求侧，可选）
+
+用于需求产物中声明「本需求涉及的面与栈」，供编排与下游选人/选提示词模板；**不改变**「一个需求 Agent」的进程边界。
+
+示例形状（概念）：`[{ "implementationRole": "frontend", "stackProfile": "nuxt-3" }, { "implementationRole": "backend", "stackProfile": "node-nest" }]`。
+
+### 15.4 `stackProfile` 枚举（v1）
+
+扩展时 **追加行** 并 **升契约/配置版本**。
+
+| `implementationRole` | `stackProfile` | 说明 |
+|----------------------|----------------|------|
+| `frontend` | `next-app-router` | Next.js App Router |
+| `frontend` | `next-pages` | Next.js Pages Router |
+| `frontend` | `react-spa` | React + Vite/类 SPA |
+| `frontend` | `vue-spa-vite` | Vue 3 + Vite SPA |
+| `frontend` | `nuxt-3` | Nuxt 3（SSR/SSG/约定式目录） |
+| `backend` | `node-nest` | Node.js + Nest |
+| `backend` | `node-express-fastify` | Express / Fastify 等轻量 API |
+| `backend` | `go-gin` | Go + Gin（或同类路由栈） |
+
+### 15.5 架构图（v1 逻辑视图）
+
+```mermaid
+flowchart LR
+  subgraph phase [端到端·六段 Skill]
+    S1[需求\ntargetStackTargets?]
+    S2[编码\nrole+stack]
+    S3[审核\nrole+stack]
+    S4[测试\nrole+stack]
+    S5[发布\nopsMode publish]
+    S6[巡检\nopsMode patrol]
+  end
+  subgraph ctx [v1 载荷]
+    R[implementationRole]
+    P[stackProfile]
+    O[opsMode]
+  end
+  S1 --> S2
+  S2 --> S3
+  S3 --> S4
+  S4 --> S5
+  S5 --> S6
+  R -.-> S2
+  P -.-> S2
+  R -.-> S3
+  P -.-> S3
+  R -.-> S4
+  P -.-> S4
+  O -.-> S5
+  O -.-> S6
+```
+
+---
+
+*架构随实现迭代可修订本文；重大边界变更建议同步契约版本与 Release Note。§8–§11 对应前述风险域在规划期的纳入约定；§12 为 ops-agent 拆分策略；§13 为 HTTP 技术栈；**§15 为脱离编辑器的运行时 Skill v1 划分**。实现时可逐条对照验收。*

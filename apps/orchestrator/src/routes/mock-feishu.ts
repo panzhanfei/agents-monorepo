@@ -8,6 +8,7 @@ import {
   actionLabelZh,
 } from '../services/intent-concurrency.js';
 import { assertNoConcurrentExclusiveTask } from '../services/assert-no-concurrent-task.js';
+import { buildCustomerHelpFeishuReply } from '../services/customer-help-reply.js';
 
 export type IMockFeishuRouteDeps = {
   logger: ILogger;
@@ -46,7 +47,7 @@ export const registerMockFeishuRoutes = (
       if (action === null) {
         throw new AppError(
           'BAD_REQUEST',
-          '无法从正文识别意图，请对照 docs/FEISHU_COMMANDS 发送',
+          '无法从正文识别意图。可发「帮助」查看新手指引，或对照 docs/FEISHU_COMMANDS 发送',
           400
         );
       }
@@ -60,6 +61,15 @@ export const registerMockFeishuRoutes = (
           action: 'status',
           tasks,
           feishuReplyText: formatStatusReply(tasks),
+        });
+        return;
+      }
+
+      if (action === 'help') {
+        res.json({
+          ok: true,
+          action: 'help',
+          feishuReplyText: buildCustomerHelpFeishuReply(),
         });
         return;
       }

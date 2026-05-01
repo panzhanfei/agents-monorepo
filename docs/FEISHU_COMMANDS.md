@@ -9,6 +9,45 @@
 
 ---
 
+## 0. 新手指引（帮助）
+
+**用途**：客户或新进群成员 **第一次接触** 时，用一两句话唤起 **流水线说明**（五类 Agent + 建议顺序），**不落任务**。
+
+| 项 | 说明 |
+|----|------|
+| 内部动作 | `help` |
+| 是否需验证码 | **不需要** |
+
+**推荐格式（发一条即可）：**
+
+```text
+帮助
+```
+
+```text
+新手指引
+```
+
+```text
+新手入门
+```
+
+```text
+使用说明
+```
+
+```text
+指令：帮助
+```
+
+```text
+help
+```
+
+**实现约定（本仓）**：`parseIntentFromMessage` 识别上述话术 → orchestrator 返回 JSON 中的 **`feishuReplyText`**（由 `buildCustomerHelpFeishuReply` 生成），接入飞书时 **原样转发为群消息**。更长的背景说明见 **[CUSTOMER_GUIDE.md](./CUSTOMER_GUIDE.md)**。
+
+---
+
 ## 1. 绑定本机工作区（新项目 / 无 Git）
 
 | 项 | 说明 |

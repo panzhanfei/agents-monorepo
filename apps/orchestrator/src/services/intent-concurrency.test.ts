@@ -15,6 +15,13 @@ describe('intent-concurrency', () => {
     );
   });
 
+  it('parseIntentFromMessage detects help', () => {
+    expect(parseIntentFromMessage('帮助')).toBe('help');
+    expect(parseIntentFromMessage('新手指引')).toBe('help');
+    expect(parseIntentFromMessage('指令：帮助')).toBe('help');
+    expect(parseIntentFromMessage('help')).toBe('help');
+  });
+
   it('buildConcurrentTaskFeishuReply includes task id and message', () => {
     const text = buildConcurrentTaskFeishuReply(
       {
