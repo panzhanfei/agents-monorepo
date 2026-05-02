@@ -2,6 +2,7 @@ import type {
   ICodingRunRequest,
   ICodingRunResponse,
   ICodingRunConfigAssessment,
+  ICodingStackChoice,
 } from '@agents/pipeline-core';
 
 import { resolveAgentHttpBaseUrlFromEnv } from './agent-http-base-url.js';
@@ -51,6 +52,10 @@ export const runCodingHttp = async (
       note?: string;
       message?: string;
       configAssessment?: ICodingRunConfigAssessment;
+      filesWritten?: string[];
+      scaffoldApplied?: boolean;
+      applyWarnings?: string[];
+      stackChoice?: ICodingStackChoice;
     };
 
     if (!res.ok) {
@@ -72,6 +77,18 @@ export const runCodingHttp = async (
       ...(json.note !== undefined ? { note: json.note } : {}),
       ...(json.configAssessment !== undefined
         ? { configAssessment: json.configAssessment }
+        : {}),
+      ...(Array.isArray(json.filesWritten)
+        ? { filesWritten: json.filesWritten }
+        : {}),
+      ...(json.scaffoldApplied !== undefined
+        ? { scaffoldApplied: json.scaffoldApplied }
+        : {}),
+      ...(Array.isArray(json.applyWarnings)
+        ? { applyWarnings: json.applyWarnings }
+        : {}),
+      ...(json.stackChoice !== undefined
+        ? { stackChoice: json.stackChoice }
         : {}),
     };
   } finally {

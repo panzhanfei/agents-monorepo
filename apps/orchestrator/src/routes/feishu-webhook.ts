@@ -45,6 +45,7 @@ import {
   tryBeginFeishuInboundDedup,
   finishFeishuInboundDedup,
 } from '../services/feishu-inbound-dedup.js';
+import { mergeRequirementsMarkdownIntoCodingInstruction } from '../services/merge-requirements-into-coding-instruction.js';
 import { teeFeishuFlow } from '../services/tee-feishu-flow.js';
 import {
   mergeConsoleTextFilesIntoRawRequirement,
@@ -171,6 +172,8 @@ export const registerFeishuWebhookRoutes = (
             workspacePathAbsolute: string;
             targetProjectId?: string;
             fullTestCommand?: string;
+            /** 新项目：编码自检可创建缺失目录（见 target.yaml `workspaceLifecycle`） */
+            workspaceLifecycle?: 'greenfield';
           }
         | undefined;
       let instructionBodyForWorkspaceActions = text;
@@ -575,6 +578,7 @@ export const registerFeishuWebhookRoutes = (
         const tidResolved = pick.targetProjectId?.trim() ?? '';
         let targetExtras: {
           fullTestCommand?: string;
+          workspaceLifecycle?: 'greenfield';
         } = {};
         if (tidResolved !== '') {
           const hit = lookupTargetProjectById(agentsCfg, tidResolved);
@@ -582,6 +586,9 @@ export const registerFeishuWebhookRoutes = (
             const f = hit.fullTestCommand?.trim() ?? '';
             targetExtras = {
               ...(f !== '' ? { fullTestCommand: f } : {}),
+              ...(hit.workspaceLifecycle === 'greenfield'
+                ? { workspaceLifecycle: 'greenfield' as const }
+                : {}),
             };
           }
         }
@@ -1028,11 +1035,22 @@ export const registerFeishuWebhookRoutes = (
         teeFeishuFlow('>>> ⑤ 执行中', '编码 → coding-agent');
         try {
           const wx = workspaceResolution;
+          const codingInstruction =
+            await mergeRequirementsMarkdownIntoCodingInstruction({
+              instructionBody: instructionBodyForWorkspaceActions,
+              ...(quotedThreadTaskId !== undefined
+                ? { quotedThreadTaskId }
+                : {}),
+              taskStore,
+            });
           const codingResult = await runCodingHttp({
             taskId: task.taskId,
-            instruction: instructionBodyForWorkspaceActions,
+            instruction: codingInstruction,
             ...(wx !== undefined
               ? { workspacePath: wx.workspacePathAbsolute }
+              : {}),
+            ...(wx?.workspaceLifecycle === 'greenfield'
+              ? { workspaceLifecycle: 'greenfield' as const }
               : {}),
             ...(wx?.targetProjectId !== undefined &&
             wx.targetProjectId.trim() !== ''
@@ -1091,7 +1109,7 @@ export const registerFeishuWebhookRoutes = (
               ? '【提示】该目标的 Agent Console 「编排审核规则」尚未上传 `.mdc` / `.md`；建议补齐后再全自动编码。\n\n'
               : '';
           const headline = codingOutcomeOk
-            ? ['【编码】任务 ' + task.taskId + '（MVP · 自检通过）'].join('')
+            ? ['【编码】任务 ' + task.taskId + '（已完成写入）'].join('')
             : '【编码】配置自检未通过｜任务 ' + task.taskId;
 
           respondFeishuJson(201, {

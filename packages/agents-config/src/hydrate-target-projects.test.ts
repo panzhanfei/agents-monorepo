@@ -81,4 +81,29 @@ describe('hydrateAgentsConfigTargetProjects', () => {
       'https://from-inline.example',
     );
   });
+
+  it('merges workspaceLifecycle from definition file', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'agents-cfg-'));
+    const defSeg = '.agents/target-projects/svc.yaml';
+    const absDef = path.join(root, ...defSeg.split('/'));
+    await fs.mkdir(path.dirname(absDef), { recursive: true });
+    await fs.writeFile(
+      absDef,
+      YAML.stringify({
+        workspacePath: './workspace/svc',
+        workspaceLifecycle: 'greenfield',
+      }),
+      'utf8',
+    );
+
+    const parsed = agentsConfigSchema.parse({
+      ...minimalAgentsYaml,
+      target: {
+        projects: [{ id: 'svc', definitionPath: defSeg }],
+      },
+    });
+
+    const hydrated = await hydrateAgentsConfigTargetProjects(root, parsed);
+    expect(hydrated.target?.projects?.[0]?.workspaceLifecycle).toBe('greenfield');
+  });
 });

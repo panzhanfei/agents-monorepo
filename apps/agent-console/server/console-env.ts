@@ -156,13 +156,6 @@ export const registerConsoleEnvRoutes = (opts: {
         }
       }
 
-      let backupPath: string | undefined;
-      if (fsSync.existsSync(envPath)) {
-        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-        backupPath = `${envPath}.bak.${stamp}`;
-        await fs.copyFile(envPath, backupPath);
-      }
-
       const merged = mergeEnvFileContent(existingRaw, parsed.data.values);
       await fs.mkdir(path.dirname(envPath), { recursive: true });
       await fs.writeFile(envPath, merged, 'utf8');
@@ -171,7 +164,6 @@ export const registerConsoleEnvRoutes = (opts: {
       res.json({
         ok: true,
         envPath,
-        backupPath,
         values,
       });
     } catch (e) {

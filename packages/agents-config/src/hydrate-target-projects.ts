@@ -22,6 +22,7 @@ const OVERLAY_KEYS = [
   'probeListenPorts',
   'publishCommand',
   'fullTestCommand',
+  'workspaceLifecycle',
 ] as const satisfies readonly (keyof ITargetProjectYamlRow)[];
 
 const pickNonEmptyStringOverrides = (
@@ -30,6 +31,12 @@ const pickNonEmptyStringOverrides = (
   const out: Partial<ITargetProjectEntry> = {};
   for (const k of OVERLAY_KEYS) {
     const v = row[k];
+    if (k === 'workspaceLifecycle') {
+      if (v === 'greenfield' || v === 'existing') {
+        out.workspaceLifecycle = v;
+      }
+      continue;
+    }
     if (typeof v === 'string' && v.trim() !== '') {
       (out as Record<string, string>)[k] = v.trim();
     }

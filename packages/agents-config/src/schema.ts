@@ -33,6 +33,11 @@ export const CUSTOMER_TARGETS_AI_RULES_DIR_SEGMENT = 'ai-rules' as const;
 export const DEFAULT_TARGET_PROJECT_DEFINITION_SUBPATH =
   '.agents/target-projects' as const;
 
+/** 新项目：允许的 `workspacePath` 尚未存在，自检阶段会递归创建目录。 */
+export const workspaceLifecycleSchema = z.enum(['existing', 'greenfield']);
+
+export type IWorkspaceLifecycle = z.infer<typeof workspaceLifecycleSchema>;
+
 const targetProjectOptionalStringsShape = {
   label: z.string().optional(),
   gitRepoUrl: z.string().optional(),
@@ -45,6 +50,7 @@ const targetProjectOptionalStringsShape = {
   probeListenPorts: z.string().optional(),
   publishCommand: z.string().optional(),
   fullTestCommand: z.string().optional(),
+  workspaceLifecycle: workspaceLifecycleSchema.optional(),
 };
 
 /**

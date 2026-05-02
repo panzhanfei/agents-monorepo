@@ -10,10 +10,12 @@ export {
   targetProjectDefinitionFileSchema,
   targetProjectEntrySchema,
   targetProjectYamlRowSchema,
+  workspaceLifecycleSchema,
   type IAgentsConfig,
   type IAgentsConfigParsed,
   type ITargetProjectEntry,
   type ITargetProjectYamlRow,
+  type IWorkspaceLifecycle,
 } from './schema.js';
 export {
   absoluteCustomerTargetAiRulesPath,

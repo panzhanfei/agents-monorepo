@@ -24,6 +24,8 @@ export const projectEntryFormSchema = z
     probeListenPorts: strOpt,
     publishCommand: strOpt,
     fullTestCommand: strOpt,
+    /** `greenfield`：编码自检可创建缺失的 `workspacePath` 目录。 */
+    workspaceLifecycle: z.enum(['existing', 'greenfield']).optional(),
   })
   .strict();
 

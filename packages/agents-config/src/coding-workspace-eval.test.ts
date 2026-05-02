@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -127,5 +127,69 @@ describe('evaluateCodingWorkspaceConfigAsync', () => {
     expect(report.orchestrationAiRuleFilesMatchedCount).toBe(1);
     expect(report.aiRuleFilesMatchedCount).toBe(1);
     expect(report.suggestCustomerConfirmWithoutMatchedAiRules).toBe(false);
+  });
+
+  it('greenfield creates missing workspace directory and passes', async () => {
+    const parent = mkdtempSync(path.join(os.tmpdir(), 'coding-eval-gf-'));
+    tmpDirs.push(parent);
+    const ws = path.join(parent, 'new-next-app');
+
+    writeFileSync(
+      path.join(parent, 'agents.config.yaml'),
+      [
+        'pipeline:',
+        '  fullTestCommand: echo',
+        'review:',
+        '  activeProfile: px',
+        '  profiles:',
+        '    px:',
+        '      aiRulesGlob: "*.md"',
+        '      customerRulesDir: rr',
+        '      blockingCommands: []',
+      ].join('\n'),
+      'utf8',
+    );
+
+    const report = await evaluateCodingWorkspaceConfigAsync({
+      monorepoRoot: parent,
+      workspaceAbsolute: ws,
+      workspaceLifecycle: 'greenfield',
+    });
+
+    expect(existsSync(ws)).toBe(true);
+    expect(statSync(ws).isDirectory()).toBe(true);
+    expect(report.workspaceLifecycleApplied).toBe('greenfield');
+    expect(report.greenfieldDirectoryCreated).toBe(true);
+    expect(report.blockingIssues).toHaveLength(0);
+  });
+
+  it('existing mode still rejects missing path', async () => {
+    const parent = mkdtempSync(path.join(os.tmpdir(), 'coding-eval-ex-'));
+    tmpDirs.push(parent);
+    writeFileSync(
+      path.join(parent, 'agents.config.yaml'),
+      [
+        'pipeline:',
+        '  fullTestCommand: echo',
+        'review:',
+        '  activeProfile: px',
+        '  profiles:',
+        '    px:',
+        '      aiRulesGlob: "*.md"',
+        '      customerRulesDir: rr',
+        '      blockingCommands: []',
+      ].join('\n'),
+      'utf8',
+    );
+    const missing = path.join(parent, 'ghost-dir');
+
+    const report = await evaluateCodingWorkspaceConfigAsync({
+      monorepoRoot: parent,
+      workspaceAbsolute: missing,
+      workspaceLifecycle: 'existing',
+    });
+
+    expect(report.blockingIssues[0]?.code).toBe('WORKSPACE_NOT_FOUND');
+    expect(existsSync(missing)).toBe(false);
   });
 });

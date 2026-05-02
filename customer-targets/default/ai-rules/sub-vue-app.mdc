@@ -1,0 +1,48 @@
+---
+description: apps/sub-vue（Vue 3.5 + Pinia + Vite 微前端）目录分层与性能约定
+globs: apps/sub-vue/**/*.{ts,tsx,vue}
+alwaysApply: false
+---
+
+# apps/sub-vue 结构与分层
+
+本应用为 **Vue 3.5** 子应用，使用 **Pinia**（含持久化插件），通常在 **Wujie** 宿主中运行；入口在 `main.ts`，路由在 `src/router`。构建为 **Vite SPA**，无 SSR；优化重心在组合式 API、异步组件与大数据渲染。
+
+## Vue 3.5：特性与优化优先级（编码向）
+
+| 优先级 | 方向 | 说明 |
+|--------|------|------|
+| **高** | **`<script setup>` + Composition API** | 新组件默认 SFC + setup；复杂逻辑抽到 **`useXxx` composable**（`src/hooks`）或组件内 `useData.ts`，与现有 monitor 模式一致。 |
+| **高** | **异步组件 / 路由级拆包** | 重面板用 **`defineAsyncComponent`**（或路由 `component: () => import(...)`）降低首屏 JS；配合 `Suspense`（若使用）或加载占位。 |
+| **高** | **长列表 / 大表格** | 监控类页面数据多时：优先 **窗口化渲染**（可考虑 **`@tanstack/vue-virtual`** 等虚拟列表方案）；**ECharts** 实例注意 `dispose` 与按需更新，避免泄漏。 |
+| **中** | **`shallowRef` / `shallowReactive`** | 大型只读结构、时间序列点集等，避免深度响应式开销。 |
+| **中** | **`v-memo`** | 静态子树多、列表项模板重时，对稳定项加 `v-memo` 减少无关更新。 |
+| **中** | **`useTemplateRef`（3.5）** | 替代部分 `ref` + 模板 ref 字符串的写法，类型更清晰。 |
+| **低** | **`defineModel` / `defineOptions`** | 表单组件、命名/继承选项时优先官方宏，减少样板代码。 |
+| **低** | **Teleport** | 弹层、全屏遮罩可用 `Teleport` 挂 body，避免 z-index 与裁剪问题。 |
+
+**注意**：与 React 子应用类似，运行在微前端内时优先在**真实嵌入环境**验证性能与内存。
+
+## 目录职责
+
+| 路径 | 职责 |
+|------|------|
+| **`src/App`** | 根组件与全局布局入口。 |
+| **`src/router`** | 路由表与路由元信息；不在此文件写业务实现。 |
+| **`src/views`** | **页面级视图**（如 `MonitorHome`、`MonitorDashboard`、`TokenManager`、`WujieSubRouteTest`）；页面数据逻辑可用同目录 `useData.ts`。 |
+| **`src/components`** | 可复用组件；监控域集中在 `components/monitor/*`，图表在 `components/charts`；单组件可含 `interface.ts`、`useData.ts`。 |
+| **`src/stores`** | Pinia store；异步与副作用优先通过 actions，避免在多个组件重复请求。 |
+| **`src/services`** | 与后端/BFF 的调用编排；组件与 store 通过此处或 hooks 调用，避免在 `.vue` 内冗长 `fetch`。 |
+| **`src/hooks`** | 可复用的组合式逻辑（含 `.ts` 与测试）。 |
+| **`src/utils`** | 工具函数、链上客户端（如 viem）、**Wujie bus 监听**（`wujie-bus-listener`）等与 UI 解耦的逻辑。 |
+| **`src/constants`** | 常量（链、bus 事件名等）。 |
+| **`src/types`** | 类型定义与补丁（如 `wujie-fix`）。 |
+| **`src/assets`** | 静态资源。 |
+
+## 协作约定
+
+- **监控/代币管理** 相关 UI：优先扩展 `components/monitor` 与对应 `views`，保持与现有 `stores/useMonitorStore` 数据流一致。
+- 与主壳通信：沿用 **`initWujieBusListener`** 与 `constants` 中的 bus 约定，避免散落字符串事件名。
+- 多应用共享逻辑上浮至 **`packages/`**（见仓库根规则）。
+- **聚合导出**：新增可复用组件、hooks、`services`、`constants` 等时，更新 **`src/components/index.ts`** 等已有 barrel；路由仅集中在 `src/router`，公开辅助函数可按目录增加 `index.ts`（见根目录规则）。
+- **循环依赖**：`hooks/index.ts` 若从 `views` 再导出（如 `useScanner` 来自 `MonitorDashboard/useData`），则 **`views` 内文件不要从 `@/hooks` barrel 导入**，应使用 `@/hooks/useChartSeries` 等具体路径，避免 `views → hooks/index → views`。

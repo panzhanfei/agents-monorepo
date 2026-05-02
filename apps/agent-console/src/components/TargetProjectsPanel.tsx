@@ -41,6 +41,7 @@ const emptyRow = (id: string): IProjectEntryForm => ({
   probeListenPorts: '',
   publishCommand: '',
   fullTestCommand: '',
+  workspaceLifecycle: 'existing',
 });
 
 const ensureRowIds = (rows: IProjectEntryForm[]): IProjectEntryForm[] => {
@@ -97,6 +98,10 @@ export const TargetProjectsPanel = ({
               typeof o.publishCommand === 'string' ? o.publishCommand : '',
             fullTestCommand:
               typeof o.fullTestCommand === 'string' ? o.fullTestCommand : '',
+            workspaceLifecycle:
+              o.workspaceLifecycle === 'greenfield'
+                ? 'greenfield'
+                : 'existing',
           };
         })
       : [];
@@ -261,6 +266,9 @@ export const TargetProjectsPanel = ({
         add('probeListenPorts', r.probeListenPorts);
         add('publishCommand', r.publishCommand);
         add('fullTestCommand', r.fullTestCommand);
+        if (r.workspaceLifecycle === 'greenfield') {
+          o.workspaceLifecycle = 'greenfield';
+        }
         return o;
       }),
     };
@@ -392,6 +400,44 @@ export const TargetProjectsPanel = ({
                       placeholder="./workspace/customer-a 或绝对路径"
                       className="border-white/10 bg-black/55 py-1.5 font-mono text-[0.78rem]"
                     />
+                  </div>
+                  <div className="flex flex-col gap-1 md:col-span-2">
+                    <ConsoleLabel
+                      htmlFor={`agent-console-project-lifecycle-${String(i)}`}
+                      className="text-[0.7rem] text-white/52"
+                    >
+                      工作区模式（
+                      <span className="font-mono">workspaceLifecycle</span>）
+                    </ConsoleLabel>
+                    <select
+                      id={`agent-console-project-lifecycle-${String(i)}`}
+                      value={
+                        row.workspaceLifecycle === 'greenfield'
+                          ? 'greenfield'
+                          : 'existing'
+                      }
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        updateRow(i, {
+                          workspaceLifecycle:
+                            v === 'greenfield' ? 'greenfield' : 'existing',
+                        });
+                      }}
+                      className="rounded-md border border-white/10 bg-black/55 px-2 py-1.5 font-mono text-[0.78rem] text-white/85"
+                    >
+                      <option value="existing">
+                        既有仓库（路径须已存在）
+                      </option>
+                      <option value="greenfield">
+                        新项目（路径可不存在，编码自检时创建目录）
+                      </option>
+                    </select>
+                    <p className="text-[0.62rem] leading-snug text-white/38">
+                      选「新项目」时可将{' '}
+                      <span className="font-mono text-white/48">workspacePath</span>{' '}
+                      指向尚不存在的工程根（如 Next.js 新仓目录），首次编码前会自动{' '}
+                      <span className="font-mono text-white/48">mkdir -p</span>。
+                    </p>
                   </div>
                 </div>
               </div>

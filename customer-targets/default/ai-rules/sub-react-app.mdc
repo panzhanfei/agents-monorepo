@@ -1,0 +1,48 @@
+---
+description: apps/sub-react（React 19 + Vite 微前端）目录分层与性能/编码约定
+globs: apps/sub-react/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# apps/sub-react 结构与分层
+
+本应用为 **React 19**（Vite SPA）子应用，通常在 **Wujie** 宿主中运行；技术栈含 **TanStack Query** 等（见 `main.tsx` 根包装）。**无 RSC**：优化重心在客户端包体、列表与并发渲染。
+
+## React 19：特性与优化优先级（编码向）
+
+| 优先级 | 方向 | 说明 |
+|--------|------|------|
+| **高** | **路由/重模块懒加载** | 页面与重依赖用 `React.lazy` + `Suspense`（与现有 `App` 中 `lazy` 一致）；fallback 与错误边界清晰，避免首包过大。 |
+| **高** | **长列表虚拟化** | 依赖已含 **`@tanstack/react-virtual`**：表格/日志/交易列表等 **>~100 行可滚动区域** 优先虚拟列表，避免全量 DOM。 |
+| **高** | **`useTransition` / `startTransition`** | 将筛选、排序、切 Tab 等非紧急更新标为 transition，减少输入卡顿（与审计控制台等重渲染场景相关）。 |
+| **中** | **`use()` 读取 Promise / Context** | 可在客户端配合 Suspense 使用；**不要在同一组件混用难以推理的隐式挂起**；优先保持数据流仍经 Query / 显式 hook。 |
+| **中** | **`useDeferredValue`** | 搜索框 + 重子树时，用延迟值降低昂贵列表的渲染频率。 |
+| **中** | **`useOptimistic` + Server 交互** | 若后续接 BFF 变更类操作，可做乐观更新；需与 Query 缓存失效策略一致。 |
+| **低** | **`ref` 回调与清理** | React 19 中 ref 回调可返回清理函数；新代码可用来订阅/取消订阅，减少 `useEffect` 样板。 |
+| **低** | **文档与元数据** | SPA 子应用一般不处理 `metadata`；SEO 由宿主 **Next** 承担。 |
+
+**注意**：子应用运行在 iframe/微前端内，**优先测真实交互与内存**（Wujie 保活、长会话），避免仅本地轻量页面结论。
+
+## 目录职责
+
+| 路径 | 职责 |
+|------|------|
+| **`src/App`** | 根组件、路由与宿主同步相关逻辑（如 Wujie 路径同步、无匹配子路由占位）；保持精简，具体页面进 `views`。 |
+| **`src/views`** | **页面级视图**：按业务分子目录（如 `AuditDashboard`、`WujieSubRouteTest`）；可含同目录 `useData.ts` 等数据逻辑。 |
+| **`src/components`** | 可复用组件；按领域分子目录（如 `components/audit/*`），复杂单组件可自带 `interface.ts`、`useData.ts`。 |
+| **`src/hooks`** | 跨视图复用的 React hooks（如审计控制、与宿主交互）。 |
+| **`src/services`** | **请求编排、流式 URL、会话初始化**等与后端/BFF 交互的模块（非 React 组件）；组件内只调用，不堆叠长串 `fetch`。 |
+| **`src/api`** | 预留目录：需要集中放 API 路径常量或薄封装时使用；与 `services` 分工为「常量/客户端」vs「业务流程」。当前仓库可为空。 |
+| **`src/stores`** | 全局客户端状态（如 Wujie 相关 store）。 |
+| **`src/utils`** | 纯工具、Bus Provider、链上客户端（如 viem）等无 UI 逻辑。 |
+| **`src/constants`** | 常量与枚举。 |
+| **`src/types`** | 类型与 `*.d.ts`（含 Wujie/window 补丁）。 |
+| **`src/algorithm`** | 与 UI 解耦的算法或计算逻辑。 |
+| **`src/assets`** | 静态资源。 |
+
+## 协作约定
+
+- 新增 **审计相关** 功能：优先落在 `views/AuditDashboard` 与 `components/audit` 下，复用现有 `hooks`、`services`、`utils/auditChat` 模式。
+- 与主壳通信：使用项目已有 **bus / 宿主工具**（如 `wujieHost`），避免在组件内硬编码宿主 origin。
+- 多应用共享逻辑上浮至 **`packages/`**（见仓库根规则）。
+- **聚合导出**：新增跨文件引用的组件、hooks、`services`、`constants`、`utils` 子模块等时，更新对应目录 **`index.ts`**（如 `src/hooks/index.ts`、`components/audit/index.ts`）；根目录 `src` 若有统一出口则一并维护（见根目录规则）。

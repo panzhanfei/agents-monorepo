@@ -61,6 +61,10 @@ export type ICodingBlockingIssue = {
 
 export type ICodingWorkspaceConfigReport = {
   readonly workspaceResolved: string;
+  /** 自检采用的策略：`greenfield` 时允许曾不存在并由本函数 `mkdir`。 */
+  readonly workspaceLifecycleApplied: 'existing' | 'greenfield';
+  /** 因在 `greenfield` 模式下创建目录后为 true（用于摘要说明）。 */
+  readonly greenfieldDirectoryCreated?: boolean;
   readonly blockingIssues: readonly ICodingBlockingIssue[];
   readonly reviewProfileUsed: string;
   /** 编排侧 ai-rules 说明（占位字段名沿用 pipeline-core） */
@@ -85,22 +89,54 @@ export const evaluateCodingWorkspaceConfigAsync = async (opts: {
   readonly workspaceAbsolute: string;
   readonly env?: NodeJS.ProcessEnv;
   readonly customerTargetProjectId?: string;
+  /** `greenfield`：目录缺失时自检阶段递归创建客户项目根。 */
+  readonly workspaceLifecycle?: 'existing' | 'greenfield';
 }): Promise<ICodingWorkspaceConfigReport> => {
   const env = opts.env ?? process.env;
   const workspaceResolved = path.resolve(opts.workspaceAbsolute);
-  const blocking: ICodingBlockingIssue[] = [];
+  const lifecycle: 'existing' | 'greenfield' =
+    opts.workspaceLifecycle === 'greenfield' ? 'greenfield' : 'existing';
 
-  if (!fs.existsSync(workspaceResolved)) {
+  const blocking: ICodingBlockingIssue[] = [];
+  let greenfieldDirectoryCreated: boolean | undefined;
+
+  const pathExistedInitially = fs.existsSync(workspaceResolved);
+  if (!pathExistedInitially) {
+    if (lifecycle === 'greenfield') {
+      try {
+        fs.mkdirSync(workspaceResolved, { recursive: true });
+        greenfieldDirectoryCreated = true;
+      } catch (e: unknown) {
+        const hint = e instanceof Error ? e.message : String(e);
+        blocking.push({
+          code: 'GREENFIELD_MKDIR_FAILED',
+          remediation: `「新项目」模式无法创建编码目录（${hint}）。请改为已存在的路径、检查父目录权限，或改用 \`workspaceLifecycle: existing\` 并先手建目录。`,
+        });
+      }
+    } else {
+      blocking.push({
+        code: 'WORKSPACE_NOT_FOUND',
+        remediation:
+          '工作区路径在磁盘上不存在。若为全新项目请在目标配置中设 \`workspaceLifecycle: greenfield\`（或由控制台选「新项目」）；否则请在 `.env`/编排器中为 \`workspacePath\` 指定已存在的客户仓根。',
+      });
+    }
+  }
+
+  if (blocking.length === 0 && fs.existsSync(workspaceResolved)) {
+    if (!fs.statSync(workspaceResolved).isDirectory()) {
+      blocking.push({
+        code: 'WORKSPACE_NOT_DIRECTORY',
+        remediation:
+          '`workspacePath` 指向的不是目录。请将路径更正为客户业务仓库的根目录。',
+      });
+    }
+  }
+
+  if (blocking.length === 0 && !fs.existsSync(workspaceResolved)) {
     blocking.push({
-      code: 'WORKSPACE_NOT_FOUND',
+      code: 'WORKSPACE_MISSING',
       remediation:
-        '工作区路径在磁盘上不存在。请在 `.env` 设置准确的 `TARGET_WORKSPACE_PATH`，或由编排器传入 `workspacePath`（推荐使用客户项目根的绝对路径），并确认本机有权访问。',
-    });
-  } else if (!fs.statSync(workspaceResolved).isDirectory()) {
-    blocking.push({
-      code: 'WORKSPACE_NOT_DIRECTORY',
-      remediation:
-        '`workspacePath` 指向的不是目录。请将路径更正为客户业务仓库的根目录。',
+        '工作区路径在自检过程中变为不可用（极少见）。请重试「编码」，或检查是否与外部进程争抢同一目录。',
     });
   }
 
@@ -149,6 +185,10 @@ export const evaluateCodingWorkspaceConfigAsync = async (opts: {
 
   return {
     workspaceResolved,
+    workspaceLifecycleApplied: lifecycle,
+    ...(greenfieldDirectoryCreated === true
+      ? { greenfieldDirectoryCreated: true }
+      : {}),
     blockingIssues: blocking,
     reviewProfileUsed,
     aiRulesGlobEffective,

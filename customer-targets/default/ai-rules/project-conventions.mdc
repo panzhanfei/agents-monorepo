@@ -1,0 +1,67 @@
+---
+description: TS 风格、interface.ts 与 I 前缀类型命名、聚合导出、packages、新增业务前先查复用
+alwaysApply: true
+---
+
+# 项目约定
+
+## TypeScript 与函数风格
+
+- 默认使用**箭头函数**编写组件、hooks、工具函数与模块级函数；仅当框架或场景必须用 `function` 声明时（例如部分生成器、依赖提升等）再使用 `function`。
+- 对**导出 API**、**对外 props**、**hook 返回值**，以及含义不直观的参数/返回值，使用**显式类型**。避免 `any`；需要时用 `unknown` 再收窄。
+- 局部若类型可从字面量或泛型明显推断（如 `const n = 1`），可依赖推断；但在**边界处**（导出、props、RPC 载荷等）仍应写清类型。
+
+```typescript
+// 推荐
+export const buildUser = (id: string): User | null => { ... };
+
+// 新代码中尽量避免
+export function buildUser(id: string) { ... }
+```
+
+## 不在自定义函数内再声明函数
+
+- 业务代码、controller、服务方法等**自写逻辑**中：不要在函数内部再 `function foo() {}` 或 `const foo = () => {}` 声明**嵌套子函数**（易拉长作用域、不利单测与复用）。
+- **例外**（可保留内层函数或回调）：
+  - **框架/库约定**的 API：如 React 的 `useState`/`useEffect`、各 UI 库传入的 `render`/`children` 工厂等。
+  - **原生高阶**用法：`array.map((x) => ...)`、`.then(...)` 等**无法外提**的一行级回调，宜保持极短；若体量大则**外提成模块级**具名函数或**工厂**（如 `createXxxPublish(args)` 放在同 feature 的独立文件）。
+- 需要「请求级闭包」时，优先**模块内工厂**（如 `createChatSsePublish`）在**子文件**返回具名能力，**不在** 200 行的 handler 里长嵌套。
+
+## 类型拆分与 `interface.ts`
+
+- 当**组件 props**、**hook 入参/返回值**、**方法参数与返回**、**视图/表格行数据**等 TypeScript 声明**累计较多行**（大致 ≥ ~30 行或单文件可读性明显下降）时：将具名类型抽到**同 feature 目录**下的 **`interface.ts`**（与仓库中 `components/.../interface.ts` 模式一致），主文件只保留实现与必要的窄类型。
+- **文件名**：优先使用 **`interface.ts`**；同一目录若需区分「仅类型」与「运行时常量」，可保留 `constants.ts` 等，但**不要**把大段接口堆回业务文件。
+- **命名**：对外使用的**接口与具名对象类型**统一 **`I` + PascalCase**，名称与对应**组件 / hook / 方法 / 领域数据**的英文含义一致（取整体概念的首段 PascalCase，而非单词首字母缩写）。
+  - 组件 `AgentTerminal` 的 props → `IAgentTerminalProps`
+  - 列表行「审计足迹」→ `IFootprintRow` 或 `IAuditFootprintRow`
+  - 函数 `mergeChatHistory` 的入参/出参 → `IMergeChatHistoryParams`、`IMergeChatHistoryResult`
+  - API / BFF 响应体 → `IChatSessionResponse` 等
+- **导出**：在 `interface.ts` 内 `export interface I...` 或 `export type I...`（对象形状、联合等具名类型）；业务文件 `import type { ... } from "./interface"`。
+- **渐进迁移**：历史文件若无 `I` 前缀，**新改动的导出类型**优先按本规则命名；不必为纯重构一次性改全仓库。
+
+## 新增业务：先查复用再实现
+
+- **BFF 与 DTO（与 `main-next-app` 一致）**：**合并、重清洗、多数据源拼装** 优先在 **`apps/server`（或 `packages`）** 的**用例级 API** 完成，**`apps/main-next` 的 `app/api` 以鉴权 + 转发为主**；前端/子应用侧做**轻量映射**即可。
+- **每次新增业务**（新页面、新接口、新 hook、新组件）在落代码前：在 monorepo 内**检索是否已有**同类能力——同应用的 `utils` / `hooks` / `components` / `services`，以及 **`packages/*`**（`ui`、`auth`、`database`、安全 SDK 等）。
+- 若存在**语义接近、边界清晰、可参数化**的实现：优先**复用**；若两处已出现重复或第三处将复制：评估**抽离**——组件/hook 上浮到 **`packages/ui`** 或当前应用内更高层 `components` / `hooks`；纯函数进 `utils` 或 **`packages`** 下合适包。
+- 避免在多个 `apps/*` 各写一套「只差配置」的拷贝；跨应用共性必须符合上文 **`packages/`** 约定。
+
+## Monorepo：共享服务放在 `packages/`
+
+- 具有**共享服务能力**的模块（数据访问、外部 API、鉴权辅助、缓存、「数据库」层、跨应用业务逻辑等）应放在 **`packages/<包名>/`**，不要在多个 `apps/*` 中重复实现。
+- 应用通过 **workspace 依赖**引用这些包；应用代码侧重 UI、路由与组装。
+- 新增共享服务包时：遵循本仓库已有包的目录与构建方式（构建工具、`package.json` 的 `exports`、tsconfig 引用等）。
+
+## 聚合导出（`index.ts` / barrel）
+
+- 新增**对外可用的**方法、配置项、路由挂载、通用组件、自定义 hook、store 模块等时：在**对应层级**维护 **`index.ts`**，把本目录（或约定好的子域）的公开 API **集中再导出**，便于统一 import 路径与代码评审。
+- **import 路径**：在应用内用 `@/…` 引用时，若该级目录已有 **barrel**（`index.ts` 聚合），业务代码从**该目录**引入，避免点到具体子文件，例如用 `@/config` 不用 `@/config/node_service`、用 `@/lib` 不用 `@/lib/bffProxy`、用 `@/utils` 不用 `@/utils/authFetch`（各应用以现有多级 `index` 为准）。**同目录**实现文件之间可优先用**相对路径**，避免经 barrel 自引用死循环。带独立 `index` 的 feature 子目录（如 `app/context`、`app/actions`、`controllers/<资源>`）可保留**两段**路径作为对外边界。
+- **例外**：**main-next** 根目录存在 `src/proxy.ts`（与 `src/proxy/` 目录同名），解析器会优先取 **文件**，`@/proxy` 不会指向 `proxy/index.ts`；与 `authRoutes` / `middlewareAuthNavigation` 相关的仍用 `@/proxy/...` 或 **`proxy/` 目录内相对路径**（如 `runProxy` 内 `./middlewareAuthNavigation`）。
+- **范围**：同一目录下多个文件且会被其他目录引用时，优先 `export { ... } from './foo'`；**仅内部使用**的实现细节可不写入 barrel。
+- **不要进 barrel**：**仅供测试**的模块（例如测试专用 helper、fixture、mock）**不要**写入业务用的 `index.ts`，避免生产/库入口误带出测试代码；从测试文件直接按路径 `import` 即可。
+- **测试文件除外**：文件名含 `.test.` / `.spec.` 的测试文件，以及 `__tests__/` 下文件，**不要求**、也**通常不应**被 `index.ts` 再导出；barrel 只面向运行时与对外 API。
+- **配置**：新配置文件除单独导出外，应在 **`config/index.ts`**（或该应用约定的 config 聚合文件）中汇总，避免业务侧散落深层路径。
+- **路由（后端）**：新路由文件除在子目录注册外，须在 **`routes/index.ts`**（或同级汇总）中挂载。
+- **`packages/*`**：遵循各包入口与 `package.json` `exports`，公开符号从包根或 `src/index.ts` 统一导出。
+
+各应用具体目录（如 **main-next** 的 `src/components/index.ts`、`src/app/...`）以对应应用的 Cursor 规则为准。

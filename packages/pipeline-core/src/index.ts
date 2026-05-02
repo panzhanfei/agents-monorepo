@@ -60,6 +60,7 @@ export type {
   ICodingRunConfigAssessment,
   ICodingRunRequest,
   ICodingRunResponse,
+  ICodingStackChoice,
 } from './coding-contract.js';
 
 export type {

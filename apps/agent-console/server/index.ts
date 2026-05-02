@@ -90,15 +90,7 @@ export const validateAgentsYamlRaw = (
 const writeValidatedAgentsYaml = async (
   yamlPath: string,
   data: unknown
-): Promise<{ backupPath?: string }> => {
-  let backupPath: string | undefined;
-
-  if (fsSync.existsSync(yamlPath)) {
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-    backupPath = `${yamlPath}.bak.${stamp}`;
-    await fs.copyFile(yamlPath, backupPath);
-  }
-
+): Promise<void> => {
   await fs.writeFile(
     yamlPath,
     `${YAML.stringify(data, {
@@ -107,7 +99,6 @@ const writeValidatedAgentsYaml = async (
     })}\n`,
     'utf8'
   );
-  return { backupPath };
 };
 
 const TARGET_DEFINITION_OPTIONAL_KEYS = [
@@ -136,6 +127,9 @@ const targetDefinitionDocFromEntry = (
     if (typeof v === 'string' && v.trim() !== '') {
       doc[k] = v.trim();
     }
+  }
+  if (p.workspaceLifecycle === 'greenfield') {
+    doc.workspaceLifecycle = 'greenfield';
   }
   return doc;
 };
@@ -332,15 +326,11 @@ export const createApp = (): express.Express => {
         return;
       }
       const yamlPath = resolveAgentsConfigPath(monorepoRoot);
-      const { backupPath } = await writeValidatedAgentsYaml(
-        yamlPath,
-        result.data
-      );
+      await writeValidatedAgentsYaml(yamlPath, result.data);
       const rawOut = await fs.readFile(yamlPath, 'utf8');
       res.json({
         ok: true,
         yamlPath,
-        backupPath,
         yamlRaw: rawOut,
       });
     } catch (e) {
@@ -434,17 +424,13 @@ export const createApp = (): express.Express => {
         return;
       }
 
-      const { backupPath } = await writeValidatedAgentsYaml(
-        yamlPath,
-        valid.data
-      );
+      await writeValidatedAgentsYaml(yamlPath, valid.data);
 
       const rawOut = await fs.readFile(yamlPath, 'utf8');
 
       res.json({
         ok: true,
         yamlPath,
-        backupPath,
         yamlRaw: rawOut,
       });
     } catch (e) {
