@@ -1,8 +1,11 @@
 import type { Group } from 'three';
 import type { JSX } from 'react';
-import { useRef } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Float, MeshDistortMaterial, Sphere, Stars } from '@react-three/drei';
+
+import { ThoughtBackdropErrorBoundary } from '~/components/ThoughtBackdropErrorBoundary';
+import { isBrowserWebGlLikelySupported } from '~/lib/webgl-capability';
 
 const ThoughtCoreInner = (): JSX.Element => {
   const meshWire = useRef<Group>(null);
@@ -67,25 +70,112 @@ const ThoughtCoreInner = (): JSX.Element => {
   );
 };
 
-export const ThoughtBackdrop = (): JSX.Element => (
-  <div className="pointer-events-none fixed inset-0 -z-[1] opacity-95">
-    <Canvas
-      aria-hidden
-      dpr={[1, 2]}
-      camera={{ position: [0, 0, 8.25], far: 64, near: 0.1 }}
-      gl={{ alpha: true, antialias: true, powerPreference: 'high-performance' }}
-    >
-      <color attach="background" args={['#050613']} />
-      <fog attach="fog" args={['#050613', 10, 40]} />
-      <Stars fade radius={112} depth={42} factor={14} saturation={0} />
-      <ambientLight intensity={0.42} />
-      <pointLight color="#38bdf8" position={[10, 8, 6]} intensity={220} decay={2} />
-      <spotLight color="#d946ef" position={[-14, -4, -2]} intensity={560} decay={2} angle={1.08} />
-
-      <ThoughtCoreInner />
-    </Canvas>
-
-    {/* 叠一层暗角与高亮 vignette */}
-    <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_0%,#020205_92%)]" />
-  </div>
+/** Flat fill when Canvas cannot mount — matches scene background hue. */
+const BackdropSolid = (): JSX.Element => (
+  <div aria-hidden className="absolute inset-0 bg-[#050613]" />
 );
+
+const ThoughtScene = (): JSX.Element => (
+  <>
+    <color attach="background" args={['#050613']} />
+    <fog attach="fog" args={['#050613', 10, 40]} />
+    <Stars fade radius={112} depth={42} factor={14} saturation={0} />
+    <ambientLight intensity={0.42} />
+    <pointLight color="#38bdf8" position={[10, 8, 6]} intensity={220} decay={2} />
+    <spotLight color="#d946ef" position={[-14, -4, -2]} intensity={560} decay={2} angle={1.08} />
+
+    <ThoughtCoreInner />
+  </>
+);
+
+const shellClass =
+  'pointer-events-none fixed inset-0 -z-[1] opacity-95';
+
+const vignetteOverlay = (
+  <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_0%,#020205_92%)]" />
+);
+
+export const ThoughtBackdrop = (): JSX.Element => {
+  const webGlProbe = useMemo(() => isBrowserWebGlLikelySupported(), []);
+  const [runCanvas, setRunCanvas] = useState(false);
+  const [glRuntimeBlocked, setGlRuntimeBlocked] = useState(false);
+
+  useEffect(() => {
+    const onWindowError = (ev: ErrorEvent) => {
+      const parts = [
+        ev.message,
+        ev.error instanceof Error ? ev.error.message : '',
+        typeof ev.error?.stack === 'string' ? ev.error.stack : '',
+      ];
+      const text = parts.join(' ');
+      if (
+        /WebGL|webgl|THREE\.WebGLRenderer|Error creating WebGL|context (loss|lost)/i.test(
+          text,
+        )
+      ) {
+        setGlRuntimeBlocked(true);
+      }
+    };
+
+    window.addEventListener('error', onWindowError);
+    return () => {
+      window.removeEventListener('error', onWindowError);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!webGlProbe || glRuntimeBlocked) {
+      return;
+    }
+
+    /** One frame later: avoids stacking multiple GL contexts during dev Strict Mode’s double mount. */
+    const id = requestAnimationFrame(() => {
+      setRunCanvas(true);
+    });
+
+    return () => {
+      cancelAnimationFrame(id);
+    };
+  }, [webGlProbe, glRuntimeBlocked]);
+
+  if (!webGlProbe || glRuntimeBlocked) {
+    return (
+      <div className={shellClass}>
+        <BackdropSolid />
+        {vignetteOverlay}
+      </div>
+    );
+  }
+
+  return (
+    <div className={shellClass}>
+      <ThoughtBackdropErrorBoundary fallback={<BackdropSolid />}>
+        {runCanvas ? (
+          <div className="absolute inset-0">
+            <Suspense fallback={null}>
+              <Canvas
+                aria-hidden
+                className="block h-full w-full touch-none"
+                dpr={[1, 1.5]}
+                camera={{ position: [0, 0, 8.25], far: 64, near: 0.1 }}
+                gl={{
+                  alpha: true,
+                  antialias: false,
+                  depth: true,
+                  stencil: false,
+                  powerPreference: 'default',
+                  failIfMajorPerformanceCaveat: false,
+                }}
+              >
+                <ThoughtScene />
+              </Canvas>
+            </Suspense>
+          </div>
+        ) : (
+          <BackdropSolid />
+        )}
+      </ThoughtBackdropErrorBoundary>
+      {vignetteOverlay}
+    </div>
+  );
+};

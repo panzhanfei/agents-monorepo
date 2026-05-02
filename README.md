@@ -23,7 +23,7 @@
 | **`review-agent`** | 审核：确定性门禁（脚本）+ 与 **`agents.config` 同源** AI 规则 glob |
 | **`test-agent`** | 全量测试命令与报告摘要 |
 | **`ops-agent`** | 打包 / 发放 / 备份回滚 / 只读巡检（由配置与安全口令约束） |
-| **`agent-console`** | **可选本地 Web UI**（Vite + API）：多项目 `target` 编辑、整份 YAML 校验/写回、经服务端转发的 LLM 流式对话；**不是**飞书第二入口，默认仅回环 |
+| **`agent-console`** | **可选本地 Web UI**（React 19 + Vite + Express API）：多项目 `target` 表单、整份 YAML 专家模式（校验/写回/备份）、经 API 转发的 **LLM 流式** 与 **流水线指令**（语义对齐 orchestrator）；**不是**飞书第二入口，默认仅回环。技术栈与 HTTP 面见 **`docs/ARCHITECTURE.md` §13.1**。 |
 
 默认 HTTP 端口见 **`agents.config.yaml`** 与 **`.env.example`**（编排约 **4010–4060**；控制台默认 **5275 / 5280**）。
 
@@ -129,6 +129,7 @@ flowchart TB
   ConsoleUI --> ConsoleAPI
   ConsoleAPI -.读写.-> Cfg
   ConsoleAPI -.LLM 转发.-> LLMUp[LLM · OpenAI 兼容]
+  ConsoleAPI -.pipeline/invoke.-> Orch
   Req -.-> LLMUp
   Rev -.-> LLMUp
 ```

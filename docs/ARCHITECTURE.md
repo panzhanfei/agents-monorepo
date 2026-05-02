@@ -29,12 +29,13 @@ flowchart TB
   end
   U <--> NG
   NG <--> OR
-  OR --> AG
-  OR --> CFG
-  AG --> WS
-  AG -.-> LLM
-  AC --> CFG
-  AC -.LLM 转发.-> LLM
+    OR --> AG
+    OR --> CFG
+    AG --> WS
+    AG -.-> LLM
+    AC --> CFG
+    AC -.LLM 转发.-> LLM
+    AC -.pipeline 联调.-> OR
   OR -.-> E
   AG -.-> E
   AC -.-> E
@@ -276,12 +277,44 @@ flowchart LR
 
 ### 13.1 `agent-console`（可选 · 本地控制台）
 
+#### 定位与非目标
+
 | 项 | 说明 |
 |------|------|
-| **定位** | **非**飞书第二入口；不写任务真相；供本机编辑配置、校验 YAML、试用流式 LLM。 |
-| **形态** | **Vite** 前端（默认 `127.0.0.1:5275`）+ **Express** API（默认 `:5280`，开发时由 Vite `proxy` 到 `/api`）。 |
-| **共享逻辑** | `@agents/agents-config` 解析/校验；AI 规则 glob 与 `review-agent` profile **同源**（便于 coding 侧自检对齐）。 |
-| **安全** | 写 `agents.config.yaml` 前会做备份；可选 **`AGENT_CONSOLE_API_TOKEN`** 要求 `Authorization: Bearer`；**禁止**将 `:5280` 无防护暴露到公网。 |
+| **定位** | **非**飞书第二入口；**不写任务真相**（任务仍以 orchestrator + `ITaskStore` 为准）。供本机/受信网络内编辑 `agents.config.yaml`、校验 Zod、试用流式 LLM、按与飞书同构的 body **联调编排器**。 |
+| **形态** | **Vite** 前端（默认 `127.0.0.1:5275`）+ **Express** API（默认 `127.0.0.1:5280`）。开发时前端将 **`/api/*`** 代理到 API 端口；**生产构建** 由服务端 `express.static` 托管 `dist/client`。 |
+| **共享逻辑** | **`@agents/agents-config`**：`agentsConfigSchema`、解析路径、`target` 段落与审核 profile **与编排/评审同源**。 |
+| **安全** | 写 `agents.config.yaml` 前 **自动备份**（时间戳 `.bak.*`）；可选 **`AGENT_CONSOLE_API_TOKEN`**：`/api/*`（除健康检查策略外）要求 **`Authorization: Bearer <同值>`**；**禁止**将 API 端口无防护暴露公网。客户端可选在 UI 内写入 **`localStorage`** 的 Bearer 草稿（仅本机浏览器，与编排密钥无关）。 |
+
+#### 服务端 HTTP 面（摘要）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/health`、`/api/health` | 存活探测（是否需鉴权以实现为准）。 |
+| `GET` | `/api/config` | 当前配置文件路径、`yamlRaw`、Zod 解析结果及供表单使用的 `parsedUnknown` 等。 |
+| `POST` | `/api/config/validate` | 仅校验请求体中的 YAML 文本，**不写盘**。 |
+| `PUT` | `/api/config` | 校验通过后整文件写回 `agents.config.yaml`（先备份）。 |
+| `PUT` | `/api/config/target-projects` | 在保留其余 YAML 结构的前提下更新 `target` 段（`source`、`workspacePath`、`gitRepoUrl`、`projects` 等）。 |
+| `POST` | `/api/chat/stream` | **OpenAI 兼容**对话流式转发（体为 `messages[]`，边界校验以服务端 Zod 为准）。 |
+| `POST` | `/api/pipeline/invoke` | 将 **`text`**（及可选 **`channelId`**、引用消息 id、**`metadata`**）转发至 **`AGENTS_ORCHESTRATOR_URL`**（默认同机 orchestrator），供 UI **流水线指令**与飞书语义对齐；编排器须已可达。 |
+
+JSON body 体积上限、字段长度等由 **`express.json`** 与 **Zod** 在 handler 边界约束；错误返回稳定 JSON，**不回栈**给客户端（与 §13 其它服务一致）。
+
+#### 前端结构（实现约定）
+
+| 主题 | 说明 |
+|------|------|
+| **数据获取** | **`@tanstack/react-query`**：编排配置走 **`/api/config`**，变更后 **`invalidateQueries`** 再拉取；**不**把 YAML 真源只放在浏览器内存而不经 API。 |
+| **本地 UI 状态** | **`zustand`** + **`persist`（`localStorage`）**：仅 **页面偏好**（例如日志区逐字显示间隔、可覆盖的 **文案 key→展示串**）；**不**持久化任务列表或编排状态，避免与 orchestrator 真相分叉。 |
+| **组件** | **React 19**、**Tailwind CSS v4**；**Radix UI**（Tabs、Label、Select）与自建 **`Console*`** 控件（`ConsoleSelect`、`ConsoleLabel`、`ConsoleTextInput` / `ConsoleNumberInput` / `ConsoleTextarea`）统一 **暗色控制台** 视觉。 |
+| **反馈** | **`sonner`** Toast；**运行日志**面板仅前端聚合展示（非集中式日志真源）。 |
+| **可选背景** | **`@react-three/fiber`** / **`three`**；WebGL 不可用时降级。**Three 的 JSX 类型**随模块 import 加载，避免在全局 `vite-env` 中强引 Fiber 以免拖垮普通页面的 JSX 推断。 |
+
+#### TypeScript 与工程配置
+
+- **`apps/agent-console/tsconfig.json`**：**`extends` `./tsconfig.app.json`** 且 **`include`: `src/**`**，使 IDE 与 **`jsx: react-jsx`**、`paths`（`~/*`）一致。
+- **`check-types`**：`tsc -p tsconfig.json`（前端）+ **`tsc -p tsconfig.server.json`**（`server/`）；**`vite.config.ts`** 由 **`tsconfig.node.json`** 覆盖。
+- **Radix + React 19**：必要时用 **`ComponentType<ComponentProps<typeof …>>`** 或 **`r19Radix()`** 收窄，避免 `ForwardRefExoticComponent` 与 JSX 工厂误推断。
 
 **说明**：若个别 Agent 长期仅为极简 health，可暂缓引入 Express；**编排与飞书入口**应优先 Express，便于中间件与路由表演进。替换为 Fastify 等属同级别方案，需同步更新本文与规则。
 

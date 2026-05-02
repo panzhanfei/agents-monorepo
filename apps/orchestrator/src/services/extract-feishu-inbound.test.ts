@@ -46,6 +46,20 @@ describe('extractFeishuInboundText', () => {
     });
   });
 
+  it('reads flat body parentMessageId for console quote', () => {
+    expect(
+      extractFeishuInboundText({
+        text: '补充说明',
+        channelId: 'agent-console',
+        parentMessageId: 'anchor-1',
+      })
+    ).toEqual({
+      text: '补充说明',
+      channelId: 'agent-console',
+      parentMessageId: 'anchor-1',
+    });
+  });
+
   it('strips @mention prefix from flat body', () => {
     expect(extractFeishuInboundText({ text: '@流水线 你好', channelId: 'c1' })).toEqual(
       { text: '你好', channelId: 'c1' }

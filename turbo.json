@@ -5,6 +5,7 @@
   "globalEnv": [
     "PORT",
     "ORCHESTRATOR_PORT",
+    "AGENTS_ORCHESTRATOR_URL",
     "CODING_AGENT_PORT",
     "REVIEW_AGENT_PORT",
     "TEST_AGENT_PORT",
@@ -59,7 +60,11 @@
     "FEISHU_OPEN_API_BASE",
     "E2E_BASE_URL",
     "E2E_ORCHESTRATOR_URL",
-    "E2E_SKIP_WEB_SERVER"
+    "E2E_SKIP_WEB_SERVER",
+    "MODE",
+    "DEV",
+    "PROD",
+    "VITE_CONSOLE_LOG_DEBUG"
   ],
   "tasks": {
     "build": {

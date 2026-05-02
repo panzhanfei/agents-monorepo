@@ -44,6 +44,14 @@ export const extractFeishuInboundText = (
       : typeof root.messageId === 'string' && root.messageId !== ''
         ? root.messageId
         : undefined;
+  const flatParentMessageId =
+    typeof root.parentMessageId === 'string' && root.parentMessageId !== ''
+      ? root.parentMessageId
+      : undefined;
+  const flatRootMessageId =
+    typeof root.rootMessageId === 'string' && root.rootMessageId !== ''
+      ? root.rootMessageId
+      : undefined;
 
   if (flatTextRaw.trim() !== '') {
     const normalized = normalizeFeishuPlainText(flatTextRaw);
@@ -56,6 +64,8 @@ export const extractFeishuInboundText = (
       ...(flatInboundMessageId !== undefined
         ? { inboundMessageId: flatInboundMessageId }
         : {}),
+      ...(flatParentMessageId !== undefined ? { parentMessageId: flatParentMessageId } : {}),
+      ...(flatRootMessageId !== undefined ? { rootMessageId: flatRootMessageId } : {}),
     };
   }
 

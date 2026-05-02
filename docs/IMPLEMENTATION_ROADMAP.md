@@ -117,6 +117,13 @@
 4. `pnpm run dev` 或单独起 `orchestrator` + 目标 Agent。
 5. 用 **模拟飞书请求** 或真群，按 **`docs/FEISHU_COMMANDS.md`** 发一条 **需求分析** 或 **绑定工作区** 做联调。
 
+### agent-console（可选 · 本地配置与联调 UI）
+
+- **与第 1 步配合**：浏览器编辑 **`target.projects`** 与单目标字段、YAML 全文校验/写回（服务端 Zod 与 **`@agents/agents-config`** 同源），减少手改 YAML 的低级错误。
+- **与第 2 步配合**：**`/api/pipeline/invoke`** 将控制台指令转发到 **orchestrator**（配置 **`AGENTS_ORCHESTRATOR_URL`** 或默认同机端口），可与 **[FEISHU_COMMANDS.md](./FEISHU_COMMANDS.md)** 及 curl 对照调试。
+- **验收**：仅 **`127.0.0.1`/内网**；若设 **`AGENT_CONSOLE_API_TOKEN`**，请求需带 **Bearer**；写盘与备份见 **[ARCHITECTURE.md](./ARCHITECTURE.md) §13.1**。
+- **非目标**：**不**替代任务存储真相、**不**承担飞书验签；**`localStorage`** 仅存放 UI 偏好（Zustand `persist`），与编排任务状态无关。
+
 ---
 
 ## 静态验证码边界（心里有数）

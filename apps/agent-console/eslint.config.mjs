@@ -6,4 +6,10 @@ export default [
   {
     ignores: ['dist/**'],
   },
+  {
+    files: ['src/logging/**/*.ts'],
+    rules: {
+      'no-console': 'off',
+    },
+  },
 ];

@@ -907,6 +907,21 @@ export const registerFeishuWebhookRoutes = (
             analysis.markdown.length > 2500
               ? `${analysis.markdown.slice(0, 2500)}\n\n…（已截断，完整 PRD 见任务 metadata.requirementsMarkdown）`
               : analysis.markdown;
+          const consolePrdReplyAnchorId =
+            task.metadata !== undefined &&
+            typeof (task.metadata as { consolePrdReplyAnchorId?: unknown })
+              .consolePrdReplyAnchorId === 'string'
+              ? String(
+                  (task.metadata as { consolePrdReplyAnchorId: string })
+                    .consolePrdReplyAnchorId
+                ).trim()
+              : '';
+          if (consolePrdReplyAnchorId !== '') {
+            registerFeishuPrdOutboundAnchor(
+              consolePrdReplyAnchorId,
+              task.taskId
+            );
+          }
           logger.info('返回响应', {
             flow: 'respond',
             httpStatus: 201,

@@ -10,7 +10,7 @@ import {
 import { loadMonorepoEnvFromEntry } from '@agents/logger';
 import express from 'express';
 import YAML from 'yaml';
-import { z } from 'zod';
+import { z, type ZodIssue } from 'zod';
 
 loadMonorepoEnvFromEntry(import.meta.url);
 
@@ -44,6 +44,16 @@ const chatStreamBodySchema = z.object({
   ).min(1),
 });
 
+const pipelineInvokeBodySchema = z
+  .object({
+    text: z.string().min(1).max(200_000),
+    channelId: z.string().min(1).optional(),
+    parentMessageId: z.string().min(1).optional(),
+    rootMessageId: z.string().min(1).optional(),
+    metadata: z.record(z.string(), z.unknown()).optional(),
+  })
+  .strict();
+
 export const validateAgentsYamlRaw = (
   yamlText: string
 ):
@@ -64,7 +74,7 @@ export const validateAgentsYamlRaw = (
     return {
       ok: false,
       errors: zod.error.issues.map(
-        (i) => `${i.path.join('.')}: ${i.message}`
+        (i: ZodIssue) => `${i.path.join('.')}: ${i.message}`
       ),
     };
   }
@@ -251,7 +261,7 @@ export const createApp = (): express.Express => {
         res.status(400).json({
           ok: false,
           errors: valid.error.issues.map(
-            (i) => `${i.path.join('.')}: ${i.message}`
+            (i: ZodIssue) => `${i.path.join('.')}: ${i.message}`
           ),
         });
         return;
@@ -372,6 +382,67 @@ export const createApp = (): express.Express => {
       };
 
       pump();
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post('/api/pipeline/invoke', async (req, res, next) => {
+    try {
+      const parsed = pipelineInvokeBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({
+          ok: false,
+          message: parsed.error.issues
+            .map((i) => `${i.path.join('.')}: ${i.message}`)
+            .join('; '),
+        });
+        return;
+      }
+
+      const port = process.env.ORCHESTRATOR_PORT?.trim() ?? '4010';
+      const baseOverride = process.env.AGENTS_ORCHESTRATOR_URL?.trim() ?? '';
+      const base =
+        baseOverride !== ''
+          ? baseOverride.replace(/\/$/, '')
+          : `http://127.0.0.1:${port}`;
+
+      const url = `${base}/v1/mock-feishu`;
+      const body: Record<string, unknown> = {
+        text: parsed.data.text,
+        ...(parsed.data.channelId !== undefined
+          ? { channelId: parsed.data.channelId }
+          : {}),
+        ...(parsed.data.parentMessageId !== undefined
+          ? { parentMessageId: parsed.data.parentMessageId }
+          : {}),
+        ...(parsed.data.rootMessageId !== undefined
+          ? { rootMessageId: parsed.data.rootMessageId }
+          : {}),
+        ...(parsed.data.metadata !== undefined
+          ? { metadata: parsed.data.metadata }
+          : {}),
+      };
+
+      const upstream = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      const rawText = await upstream.text();
+      let json: unknown;
+      try {
+        json = JSON.parse(rawText) as unknown;
+      } catch {
+        res.status(502).json({
+          ok: false,
+          message: `编排器返回非 JSON（HTTP ${String(upstream.status)}）：${rawText.slice(0, 500)}`,
+        });
+        return;
+      }
+
+      res.status(upstream.status).json(json);
     } catch (e) {
       next(e);
     }
