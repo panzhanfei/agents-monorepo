@@ -51,6 +51,7 @@ export {
 export type {
   IRequirementsAnalysisRequest,
   IRequirementsAnalysisResponse,
+  IRequirementsImageAttachment,
   RequirementsPrdStatus,
 } from './requirements-contract.js';
 

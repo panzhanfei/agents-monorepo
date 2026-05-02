@@ -26,7 +26,16 @@ export const requirementsAnalysisBodySchema = z
     taskId: z.string().min(1),
     mode: z.enum(['create', 'revise']).optional(),
     priorPrdMarkdown: z.string().max(600_000).optional(),
-    rawRequirement: z.string().min(1).max(200_000),
+    rawRequirement: z.string().min(1).max(500_000),
+    imageAttachments: z
+      .array(
+        z.object({
+          mimeType: z.string().min(3).max(80),
+          base64: z.string().min(8).max(3_500_000),
+        })
+      )
+      .max(6)
+      .optional(),
     targetStackTargets: z.array(targetSchema).optional(),
   })
   .superRefine((v, ctx) => {
@@ -38,6 +47,25 @@ export const requirementsAnalysisBodySchema = z
           path: ['priorPrdMarkdown'],
         });
       }
+    }
+    const allowMime = new Set([
+      'image/png',
+      'image/jpeg',
+      'image/jpg',
+      'image/webp',
+      'image/gif',
+    ]);
+    const imgs = v.imageAttachments;
+    if (imgs !== undefined) {
+      imgs.forEach((im, i) => {
+        if (!allowMime.has(im.mimeType.trim().toLowerCase())) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `不支持的图片 MIME：${im.mimeType}`,
+            path: ['imageAttachments', i, 'mimeType'],
+          });
+        }
+      });
     }
   });
 

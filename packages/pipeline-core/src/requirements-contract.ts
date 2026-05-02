@@ -6,6 +6,12 @@ import type { ITargetStackTarget } from './runtime-skills.js';
 
 export type RequirementsPrdStatus = 'draft' | 'ready_for_implementation';
 
+/** 与 OpenAI 兼容接口的 vision 入参一致：`data:<mime>;base64,<…>` */
+export interface IRequirementsImageAttachment {
+  readonly mimeType: string;
+  readonly base64: string;
+}
+
 export interface IRequirementsAnalysisRequest {
   readonly taskId: string;
   /**
@@ -17,6 +23,8 @@ export interface IRequirementsAnalysisRequest {
   readonly priorPrdMarkdown?: string;
   /** 用户原始需求描述 */
   readonly rawRequirement: string;
+  /** 可选：截图/扫描件等（需使用支持视觉的多模态模型） */
+  readonly imageAttachments?: readonly IRequirementsImageAttachment[];
   /** 可选：PRD 应对齐的栈与实现面 */
   readonly targetStackTargets?: readonly ITargetStackTarget[];
 }

@@ -8,6 +8,7 @@ import { StreamingChatDock } from '~/components/StreamingChatDock';
 import { ThoughtBackdrop } from '~/components/ThoughtBackdrop';
 import { YamlWorkbench } from '~/components/YamlWorkbench';
 import { useConsoleConfigQuery } from '~/hooks/use-console-config-query';
+import { useFeishuRuntimeLogStream } from '~/hooks/use-feishu-runtime-log-stream';
 import { appendConsoleLog } from '~/stores/console-store';
 
 const TabsRoot = Root as ComponentType<ComponentProps<typeof Root>>;
@@ -58,6 +59,7 @@ const ConsoleSectionTabs = ({
 };
 
 export const ConsoleLayout = (): ReactElement => {
+  useFeishuRuntimeLogStream();
   const { data, isError, isPending, error, refetch, isFetching } =
     useConsoleConfigQuery();
   const [reloadPending, startReloadTransition] = useTransition();

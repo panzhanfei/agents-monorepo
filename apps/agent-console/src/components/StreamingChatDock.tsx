@@ -1,5 +1,5 @@
-import type { JSX } from 'react';
-import { useLayoutEffect, useRef, useState } from 'react';
+import type { DragEvent, JSX } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import {
@@ -13,6 +13,10 @@ import {
   readConsoleBearer,
 } from '~/lib/console-storage';
 import { authorizedJsonHeaders } from '~/lib/request-headers';
+import {
+  materializeConsoleRequirementAttachments,
+  type IMaterializedConsoleAttachments,
+} from '~/lib/materialize-requirement-attachments';
 
 export type IChatBubble = {
   readonly id: string;
@@ -41,6 +45,30 @@ type IQuote = {
 
 const CONSOLE_PIPELINE_CHANNEL = 'agent-console';
 
+const REQ_FILE_ACCEPT =
+  '.txt,.md,.markdown,.json,.yaml,.yml,.csv,.pdf,application/pdf,image/png,image/jpeg,image/webp,image/gif';
+
+const MAX_REQ_PDF_BYTES = 40 * 1024 * 1024;
+
+const REQ_IMAGE_MIMES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/jpg',
+  'image/webp',
+  'image/gif',
+]);
+
+type IReqPendingTextish = { readonly id: string; readonly file: File };
+type IReqPendingImage = { readonly id: string; readonly file: File };
+
+const isReqPdfFile = (f: File): boolean =>
+  f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
+
+const isReqTextFile = (f: File): boolean =>
+  isReqPdfFile(f) !== true &&
+  (f.type.startsWith('text/') === true ||
+    /\.(txt|md|markdown|json|yaml|yml|csv)$/i.test(f.name));
+
 const INSTRUCTION_MODE_OPTIONS: readonly {
   readonly value: IInstructionMode;
   readonly label: string;
@@ -66,22 +94,30 @@ const composeInstructionText = (
   mode: IInstructionMode,
   input: string,
   quote: IQuote | null,
+  opts?: { readonly hasRequirementAttachments?: boolean }
 ):
   | { ok: true; text: string }
   | { ok: false; error: string } => {
   const t = input.trim();
+  const hasAtt = opts?.hasRequirementAttachments === true;
   if (mode === 'llm') {
     return { ok: false, error: 'internal' };
   }
   if (mode === 'requirements') {
     if (quote !== null) {
-      if (t === '') {
+      if (t === '' && hasAtt !== true) {
         return { ok: false, error: '请填写对 PRD 的补充或修订说明。' };
+      }
+      if (t === '') {
+        return { ok: true, text: '（见上传的文档/截图）' };
       }
       return { ok: true, text: t };
     }
+    if (t === '' && hasAtt !== true) {
+      return { ok: false, error: '请填写需求说明或添加文档/图片附件。' };
+    }
     if (t === '') {
-      return { ok: false, error: '请填写需求说明。' };
+      return { ok: true, text: '需求分析：（需求来源见上传附件）' };
     }
     return { ok: true, text: `需求分析：${t}` };
   }
@@ -146,11 +182,16 @@ const extractPipelineReply = (
 const formatUserBubbleBody = (
   quote: IQuote | null,
   pipelineText: string,
+  att?: { readonly text: number; readonly images: number }
 ): string => {
+  const attNote =
+    att !== undefined && (att.text > 0 || att.images > 0)
+      ? `\n\n〔待发附件〕文本 ${String(att.text)} · 图 ${String(att.images)}`
+      : '';
   if (quote === null) {
-    return pipelineText;
+    return `${pipelineText}${attNote}`;
   }
-  return `〔引用〕${previewForQuote(quote.preview, 180)}\n\n${pipelineText}`;
+  return `〔引用〕${previewForQuote(quote.preview, 180)}\n\n${pipelineText}${attNote}`;
 };
 
 /** 粗略解析 OpenAI-style SSE：`data:` JSON chunks；忽略 tool calls */
@@ -190,7 +231,7 @@ export const StreamingChatDock = ({
       id: 'sys',
       role: 'assistant',
       content:
-        '**自由对话** 走 `/api/chat/stream`（LLM）；**流水线指令** 走 `/api/pipeline/invoke` → 编排器 `mock-feishu`，与飞书指令同一套能力。引用 PRD 消息后再发「需求分析」类补充，将像飞书引用回复一样合并修订。请在本机启动 orchestrator（默认 :4010），可在 `.env` 设置 `AGENTS_ORCHESTRATOR_URL`。',
+        '**自由对话** 走 `/api/chat/stream`（LLM）；**流水线指令** 走 `/api/pipeline/invoke` → 编排器 `mock-feishu`，与飞书指令同一套能力。**需求分析** 可选中或拖拽 **暂存** 文档/图片（不会立刻解析）；在下方输入框写好说明后，点击 **「发送」** 才读取 PDF/文本/图并提交流水线。支持 `.txt` / `.md` / JSON、**PDF（文本层；扫描件请用图片 + 视觉模型）**、PNG/JPEG/WebP/GIF。引用 PRD 后再发补充，将像飞书引用回复一样合并修订。请在本机启动 orchestrator（默认 :4010），可在 `.env` 设置 `AGENTS_ORCHESTRATOR_URL`。',
     },
   ]);
 
@@ -209,6 +250,22 @@ export const StreamingChatDock = ({
   const [instructionMode, setInstructionMode] =
     useState<IInstructionMode>('llm');
   const [quote, setQuote] = useState<IQuote | null>(null);
+  const [reqPendingTextish, setReqPendingTextish] = useState<
+    IReqPendingTextish[]
+  >([]);
+  const [reqPendingImages, setReqPendingImages] = useState<
+    IReqPendingImage[]
+  >([]);
+  const [reqDropHighlight, setReqDropHighlight] = useState(false);
+  const reqFileInputRef = useRef<HTMLInputElement>(null);
+  const reqPendingSnapRef = useRef({
+    textish: [] as IReqPendingTextish[],
+    images: [] as IReqPendingImage[],
+  });
+  reqPendingSnapRef.current = {
+    textish: reqPendingTextish,
+    images: reqPendingImages,
+  };
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const bufferRef = useRef('');
@@ -218,6 +275,13 @@ export const StreamingChatDock = ({
       messages[messages.length - 1]?.content.length ?? '',
     )}`;
 
+  useEffect(() => {
+    if (instructionMode !== 'requirements') {
+      setReqPendingTextish([]);
+      setReqPendingImages([]);
+    }
+  }, [instructionMode]);
+
   /** 长会话与新块到来时锚定到底（measure 后与 TanStack Virtual 对齐） */
   useLayoutEffect(() => {
     const lastIndex = messages.length - 1;
@@ -226,6 +290,89 @@ export const StreamingChatDock = ({
     }
     msgVirtualizer.scrollToIndex(lastIndex, { align: 'end' });
   }, [messages.length, tailFingerprint, streaming, msgVirtualizer]);
+
+  const ingestReqFilesFromList = (list: FileList | null): void => {
+    if (list === null || list.length === 0) {
+      return;
+    }
+
+    const nextT = [...reqPendingSnapRef.current.textish];
+    const nextI = [...reqPendingSnapRef.current.images];
+    const errors: string[] = [];
+    const MAX_TEXTISH_BYTES = 25 * 1024 * 1024;
+    const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
+
+    for (const f of [...list]) {
+      const mimeOk =
+        f.type.startsWith('image/') === true && REQ_IMAGE_MIMES.has(f.type);
+
+      if (mimeOk) {
+        if (nextI.length >= 6) {
+          errors.push('图片最多 6 张');
+          break;
+        }
+        if (f.size > MAX_IMAGE_BYTES) {
+          errors.push(`${f.name}：图片过大（建议 ≤15MB）`);
+          continue;
+        }
+        nextI.push({
+          id: globalThis.crypto.randomUUID(),
+          file: f,
+        });
+        continue;
+      }
+
+      if (isReqPdfFile(f)) {
+        if (nextT.length >= 8) {
+          errors.push('文本类附件最多 8 个');
+          break;
+        }
+        if (f.size > MAX_REQ_PDF_BYTES) {
+          errors.push(`${f.name}：PDF 超过 40MB`);
+          continue;
+        }
+        nextT.push({
+          id: globalThis.crypto.randomUUID(),
+          file: f,
+        });
+        continue;
+      }
+
+      if (isReqTextFile(f)) {
+        if (nextT.length >= 8) {
+          errors.push('文本类附件最多 8 个');
+          break;
+        }
+        if (f.size > MAX_TEXTISH_BYTES) {
+          errors.push(`${f.name}：文件过大（建议 ≤25MB）`);
+          continue;
+        }
+        nextT.push({
+          id: globalThis.crypto.randomUUID(),
+          file: f,
+        });
+        continue;
+      }
+
+      errors.push(
+        `${f.name}：类型不支持（文本 / PDF / PNG / JPEG / WebP / GIF）`
+      );
+    }
+
+    setReqPendingTextish(nextT);
+    setReqPendingImages(nextI);
+
+    if (errors.length > 0) {
+      setMessages((p) => [
+        ...p,
+        {
+          id: `e:${String(Date.now())}`,
+          role: 'assistant',
+          content: `（附件）${errors.slice(0, 5).join('；')}`,
+        },
+      ]);
+    }
+  };
 
   const sendPipeline = async (
     pipelineText: string,
@@ -400,10 +547,15 @@ export const StreamingChatDock = ({
       return;
     }
 
+    const hasReqAtt =
+      instructionMode === 'requirements' &&
+      (reqPendingTextish.length > 0 || reqPendingImages.length > 0);
+
     const composed = composeInstructionText(
       instructionMode,
       rawInput,
       quote,
+      { hasRequirementAttachments: hasReqAtt }
     );
     if (composed.ok !== true) {
       const errBubble: IChatBubble = {
@@ -415,48 +567,99 @@ export const StreamingChatDock = ({
       return;
     }
 
-    const userMsg: IChatBubble = {
-      id: `u:${String(Date.now())}`,
-      role: 'user',
-      content: formatUserBubbleBody(quote, composed.text),
-    };
-
-    const assistantId = `a:${globalThis.crypto.randomUUID()}`;
-    const meta: Record<string, unknown> = {};
-    if (instructionMode === 'requirements' && quote === null) {
-      meta.consolePrdReplyAnchorId = assistantId;
-    }
-
-    setMessages((prev) => [
-      ...prev,
-      userMsg,
-      {
-        id: assistantId,
-        role: 'assistant',
-        content: '… 编排器执行中 …',
-      },
-    ]);
-    setInput('');
-    const quoteSnap = quote;
-    setQuote(null);
     setStreaming(true);
 
+    let assistantId = '';
+
     try {
+      let materialized: IMaterializedConsoleAttachments | undefined;
+      if (
+        instructionMode === 'requirements' &&
+        (reqPendingTextish.length > 0 || reqPendingImages.length > 0)
+      ) {
+        const mat = await materializeConsoleRequirementAttachments(
+          reqPendingTextish,
+          reqPendingImages
+        );
+        if (mat.ok !== true) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `e:${String(Date.now())}`,
+              role: 'assistant',
+              content: mat.error,
+            },
+          ]);
+          return;
+        }
+        materialized = {
+          textFiles: [...mat.data.textFiles],
+          images: [...mat.data.images],
+        };
+      }
+
+      const userMsg: IChatBubble = {
+        id: `u:${String(Date.now())}`,
+        role: 'user',
+        content: formatUserBubbleBody(
+          quote,
+          composed.text,
+          hasReqAtt === true
+            ? {
+                text: reqPendingTextish.length,
+                images: reqPendingImages.length,
+              }
+            : undefined
+        ),
+      };
+
+      assistantId = `a:${globalThis.crypto.randomUUID()}`;
+      const meta: Record<string, unknown> = {};
+      if (instructionMode === 'requirements' && quote === null) {
+        meta.consolePrdReplyAnchorId = assistantId;
+      }
+      if (
+        materialized !== undefined &&
+        (materialized.textFiles.length > 0 || materialized.images.length > 0)
+      ) {
+        meta.consoleRequirementsAttachments = {
+          textFiles: materialized.textFiles,
+          images: materialized.images,
+        };
+      }
+
+      setMessages((prev) => [
+        ...prev,
+        userMsg,
+        {
+          id: assistantId,
+          role: 'assistant',
+          content: '… 编排器执行中 …',
+        },
+      ]);
+      setInput('');
+      setReqPendingTextish([]);
+      setReqPendingImages([]);
+      const quoteSnap = quote;
+      setQuote(null);
+
       await sendPipeline(
         composed.text,
         assistantId,
         Object.keys(meta).length > 0 ? meta : undefined,
-        quoteSnap !== null ? quoteSnap.id : undefined,
+        quoteSnap !== null ? quoteSnap.id : undefined
       );
     } catch (e) {
       const msg = e instanceof Error ? e.message : '请求失败';
-      setMessages((prev) =>
-        prev.map((x) =>
-          x.id === assistantId
-            ? { ...x, content: `（流水线请求失败）${msg}` }
-            : x,
-        ),
-      );
+      if (assistantId !== '') {
+        setMessages((prev) =>
+          prev.map((x) =>
+            x.id === assistantId
+              ? { ...x, content: `（流水线请求失败）${msg}` }
+              : x,
+          ),
+        );
+      }
     } finally {
       setStreaming(false);
     }
@@ -466,7 +669,11 @@ export const StreamingChatDock = ({
     if (instructionMode === 'llm') {
       return input.trim() !== '';
     }
-    const c = composeInstructionText(instructionMode, input, quote);
+    const c = composeInstructionText(instructionMode, input, quote, {
+      hasRequirementAttachments:
+        instructionMode === 'requirements' &&
+        (reqPendingTextish.length > 0 || reqPendingImages.length > 0),
+    });
     return c.ok === true;
   };
 
@@ -484,7 +691,7 @@ export const StreamingChatDock = ({
       : instructionMode === 'requirements' && quote !== null
         ? '填写对 PRD 的补充（将按引用合并修订）…'
         : instructionMode === 'requirements'
-          ? '描述产品需求，将调用 requirements-agent…'
+          ? '描述产品需求，或上传 .txt / .md / PDF / 截图…'
           : instructionMode === 'code'
             ? '说明要做的改动…'
             : instructionMode === 'review'
@@ -496,6 +703,55 @@ export const StreamingChatDock = ({
                   : instructionMode === 'probe'
                     ? '可选：巡检说明；留空则默认采集'
                     : '留空将只发送指令关键词';
+
+  const streamComposerFooter = (
+    <footer className="flex shrink-0 gap-3 border-t border-white/10 pt-3">
+      <ConsoleTextarea
+        value={input}
+        onChange={(e) => {
+          setInput(e.target.value);
+        }}
+        placeholder={inputPlaceholder}
+        disabled={streaming}
+        rows={2}
+        density="compact"
+        onKeyDown={(e) => {
+          if (
+            e.key === 'Enter' &&
+            e.shiftKey !== true &&
+            e.nativeEvent.isComposing !== true
+          ) {
+            e.preventDefault();
+            if (instructionMode === 'llm') {
+              if (input.trim() === '') {
+                return;
+              }
+            } else if (canSendPipeline() !== true) {
+              return;
+            }
+
+            void send();
+          }
+        }}
+        className="disabled:opacity-55"
+      />
+      <button
+        type="button"
+        disabled={
+          streaming ||
+          (instructionMode === 'llm'
+            ? input.trim() === ''
+            : canSendPipeline() !== true)
+        }
+        onClick={() => {
+          void send();
+        }}
+        className="cursor-pointer self-end rounded-xl bg-linear-to-br from-sky-500 via-fuchsia-500 to-purple-700 px-[1.05rem] py-3 text-[0.8rem] font-bold text-black shadow-lg shadow-purple-950/65 transition-opacity hover:opacity-92 disabled:pointer-events-none disabled:opacity-40"
+      >
+        发送 →
+      </button>
+    </footer>
+  );
 
   return (
     <section
@@ -680,52 +936,127 @@ export const StreamingChatDock = ({
         </div>
       </div>
 
-      <footer className="flex shrink-0 gap-3 border-t border-white/10 pt-3">
-        <ConsoleTextarea
-          value={input}
-          onChange={(e) => {
-            setInput(e.target.value);
-          }}
-          placeholder={inputPlaceholder}
-          disabled={streaming}
-          rows={2}
-          density="compact"
-          onKeyDown={(e) => {
-            if (
-              e.key === 'Enter' &&
-              e.shiftKey !== true &&
-              e.nativeEvent.isComposing !== true
-            ) {
-              e.preventDefault();
-              if (instructionMode === 'llm') {
-                if (input.trim() === '') {
-                  return;
-                }
-              } else if (canSendPipeline() !== true) {
-                return;
-              }
-
-              void send();
+      {instructionMode === 'requirements' ? (
+        <div
+          className={`flex shrink-0 flex-col gap-3 rounded-xl transition-[box-shadow,background-color] ${
+            reqDropHighlight
+              ? 'ring-2 ring-cyan-400/50 bg-cyan-950/25 shadow-[0_0_24px_rgba(34,211,238,0.12)]'
+              : ''
+          }`}
+          onDragOver={(e: DragEvent<HTMLDivElement>) => {
+            if (streaming === true) {
+              return;
             }
+            if (!e.dataTransfer.types.includes('Files')) {
+              return;
+            }
+            e.preventDefault();
+            e.stopPropagation();
+            e.dataTransfer.dropEffect = 'copy';
+            setReqDropHighlight(true);
           }}
-          className="disabled:opacity-55"
-        />
-        <button
-          type="button"
-          disabled={
-            streaming ||
-            (instructionMode === 'llm'
-              ? input.trim() === ''
-              : canSendPipeline() !== true)
-          }
-          onClick={() => {
-            void send();
+          onDragLeave={(e: DragEvent<HTMLDivElement>) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.currentTarget.contains(e.relatedTarget as Node)) {
+              return;
+            }
+            setReqDropHighlight(false);
           }}
-          className="cursor-pointer self-end rounded-xl bg-linear-to-br from-sky-500 via-fuchsia-500 to-purple-700 px-[1.05rem] py-3 text-[0.8rem] font-bold text-black shadow-lg shadow-purple-950/65 transition-opacity hover:opacity-92 disabled:pointer-events-none disabled:opacity-40"
+          onDrop={(e: DragEvent<HTMLDivElement>) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setReqDropHighlight(false);
+            if (streaming === true) {
+              return;
+            }
+            ingestReqFilesFromList(e.dataTransfer.files);
+          }}
         >
-          发送 →
-        </button>
-      </footer>
+          <div className="flex flex-col gap-2">
+            <input
+              ref={reqFileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              accept={REQ_FILE_ACCEPT}
+              onChange={(e) => {
+                ingestReqFilesFromList(e.target.files);
+                e.target.value = '';
+              }}
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={streaming}
+                onClick={() => {
+                  reqFileInputRef.current?.click();
+                }}
+                className="cursor-pointer rounded-lg border border-cyan-500/35 bg-black/25 px-3 py-1.5 text-[0.72rem] text-cyan-100/90 transition hover:bg-black/40 disabled:opacity-45"
+              >
+                添加文档 / 图片
+              </button>
+              <span className="text-[0.68rem] text-white/45">
+                暂存附件；与下方说明一并点击「发送」后才解析并提交 · 支持文本 / PDF
+                / 图
+              </span>
+            </div>
+            {reqPendingTextish.length + reqPendingImages.length > 0 ? (
+              <div className="flex max-h-24 flex-wrap gap-2 overflow-y-auto rounded-lg border border-white/10 bg-black/20 p-2">
+                {reqPendingTextish.map((f) => {
+                  const nm = f.file.name;
+                  return (
+                  <span
+                    key={f.id}
+                    className="inline-flex items-center gap-1 rounded-md border border-sky-500/30 bg-sky-950/40 px-2 py-1 font-mono text-[0.65rem] text-sky-100/90"
+                  >
+                    文 {nm.length > 22 ? `${nm.slice(0, 22)}…` : nm}
+                    <button
+                      type="button"
+                      className="cursor-pointer text-rose-300/90"
+                      disabled={streaming}
+                      onClick={() => {
+                        setReqPendingTextish((p) =>
+                          p.filter((x) => x.id !== f.id),
+                        );
+                      }}
+                    >
+                      ×
+                    </button>
+                  </span>
+                  );
+                })}
+                {reqPendingImages.map((im) => {
+                  const nm = im.file.name;
+                  return (
+                  <span
+                    key={im.id}
+                    className="inline-flex items-center gap-1 rounded-md border border-fuchsia-500/30 bg-fuchsia-950/35 px-2 py-1 font-mono text-[0.65rem] text-fuchsia-100/90"
+                  >
+                    图 {nm.length > 18 ? `${nm.slice(0, 18)}…` : nm}
+                    <button
+                      type="button"
+                      className="cursor-pointer text-rose-300/90"
+                      disabled={streaming}
+                      onClick={() => {
+                        setReqPendingImages((p) =>
+                          p.filter((x) => x.id !== im.id),
+                        );
+                      }}
+                    >
+                      ×
+                    </button>
+                  </span>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+          {streamComposerFooter}
+        </div>
+      ) : (
+        streamComposerFooter
+      )}
     </section>
   );
 };

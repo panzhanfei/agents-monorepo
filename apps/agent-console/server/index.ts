@@ -135,7 +135,9 @@ export const createApp = (): express.Express => {
   app.use(express.json({ limit: '10mb' }));
 
   const authGuard: express.RequestHandler = (req, res, next) => {
-    const noAuth = req.path.endsWith('/health');
+    const noAuth =
+      req.path.endsWith('/health') === true ||
+      req.path === '/feishu-log-stream';
     if (
       OPTIONAL_TOKEN === undefined ||
       OPTIONAL_TOKEN === '' ||
@@ -159,6 +161,90 @@ export const createApp = (): express.Express => {
 
   app.get(['/health', '/api/health'], (_req, res) => {
     res.json({ ok: true, service: 'agent-console-api' });
+  });
+
+  app.get('/api/feishu-log-stream', async (req, res, next) => {
+    try {
+      const port = process.env.ORCHESTRATOR_PORT?.trim() ?? '4010';
+      const baseOverride = process.env.AGENTS_ORCHESTRATOR_URL?.trim() ?? '';
+      const base =
+        baseOverride !== ''
+          ? baseOverride.replace(/\/$/, '')
+          : `http://127.0.0.1:${port}`;
+
+      const upstreamUrl = `${base}/v1/console/feishu-log-stream`;
+      const ac = new AbortController();
+
+      req.on('close', () => {
+        ac.abort();
+      });
+
+      const upstream = await fetch(upstreamUrl, {
+        headers: { Accept: 'text/event-stream' },
+        signal: ac.signal,
+      });
+
+      if (!upstream.ok) {
+        res
+          .status(502)
+          .type('text/plain')
+          .send(
+            `编排器飞书日志流不可用（HTTP ${String(upstream.status)}），请确认 orchestrator 已启动。`
+          );
+        return;
+      }
+
+      res.status(200);
+      res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-cache, no-transform');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('X-Accel-Buffering', 'no');
+
+      if (upstream.body === null) {
+        res.end();
+        return;
+      }
+
+      const reader = upstream.body.getReader();
+
+      const pump = (): void => {
+        void reader
+          .read()
+          .then(({ done, value }) => {
+            if (ac.signal.aborted === true) {
+              return;
+            }
+            if (done === true) {
+              res.end();
+              return;
+            }
+            if (value !== undefined && value.byteLength > 0) {
+              res.write(Buffer.from(value));
+            }
+            pump();
+          })
+          .catch(() => {
+            if (res.writableEnded !== true) {
+              res.destroy();
+            }
+          });
+      };
+
+      pump();
+    } catch (e) {
+      if (req.closed === true) {
+        return;
+      }
+      const msg = e instanceof Error ? e.message : String(e);
+      if (res.headersSent !== true) {
+        res
+          .status(502)
+          .type('text/plain')
+          .send(`飞书日志流连接失败：${msg}`);
+        return;
+      }
+      next(e);
+    }
   });
 
   app.get('/api/config', async (_req, res, next) => {

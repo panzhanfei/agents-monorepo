@@ -4,6 +4,7 @@ import type {
   IRequirementsAnalysisResponse,
 } from '@agents/pipeline-core';
 import type { ILlmEnvConfig } from '../config/env.js';
+import type { ILlmChatMessage } from '../clients/llm-openai-compatible.js';
 import { chatCompletionText } from '../clients/llm-openai-compatible.js';
 import { REQUIREMENTS_PRD_SYSTEM_PROMPT } from '../prompts/prd-system.js';
 import {
@@ -20,6 +21,14 @@ const buildUserPrompt = (
   input: IRequirementsAnalysisRequest
 ): string => {
   const mode = input.mode ?? 'create';
+  const hasImages = (input.imageAttachments?.length ?? 0) > 0;
+  const imageTail =
+    hasImages === true
+      ? [
+          '',
+          '（用户另附了截图/图片，请结合图片中的界面与文字一并理解需求。）',
+        ]
+      : [];
   const stackSection =
     input.targetStackTargets !== undefined &&
     input.targetStackTargets.length > 0
@@ -46,6 +55,7 @@ const buildUserPrompt = (
       '',
       stackSection,
       '请输出合并后的完整 PRD Markdown，并在正文内用「### 本版相对上一版的主要变更」列出变更要点。',
+      ...imageTail,
     ]
       .filter((line) => line !== '')
       .join('\n');
@@ -59,9 +69,40 @@ const buildUserPrompt = (
     '',
     stackSection,
     '请输出符合系统规则的完整 PRD Markdown。',
+    ...imageTail,
   ]
     .filter((line) => line !== '')
     .join('\n');
+};
+
+const buildLlmMessages = (
+  input: IRequirementsAnalysisRequest
+): readonly ILlmChatMessage[] => {
+  const userText = buildUserPrompt(input);
+  const imgs = input.imageAttachments ?? [];
+
+  if (imgs.length === 0) {
+    return [
+      { role: 'system', content: REQUIREMENTS_PRD_SYSTEM_PROMPT },
+      { role: 'user', content: userText },
+    ];
+  }
+
+  return [
+    { role: 'system', content: REQUIREMENTS_PRD_SYSTEM_PROMPT },
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: userText },
+        ...imgs.map((img) => ({
+          type: 'image_url' as const,
+          image_url: {
+            url: `data:${img.mimeType};base64,${img.base64}`,
+          },
+        })),
+      ],
+    },
+  ];
 };
 
 export const runRequirementsAnalysis = async (
@@ -72,10 +113,7 @@ export const runRequirementsAnalysis = async (
     deps.logger.warn('llm_model_empty', { taskId: input.taskId });
   }
 
-  const messages = [
-    { role: 'system' as const, content: REQUIREMENTS_PRD_SYSTEM_PROMPT },
-    { role: 'user' as const, content: buildUserPrompt(input) },
-  ];
+  const messages = buildLlmMessages(input);
 
   let rawText = '';
   let attempt = 0;

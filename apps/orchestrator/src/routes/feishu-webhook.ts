@@ -46,6 +46,11 @@ import {
 } from '../services/feishu-inbound-dedup.js';
 import { teeFeishuFlow } from '../services/tee-feishu-flow.js';
 import {
+  mergeConsoleTextFilesIntoRawRequirement,
+  parseConsoleRequirementsAttachments,
+  stripConsoleRequirementsAttachmentsFromMetadata,
+} from '../services/console-requirements-attachments.js';
+import {
   buildAmbiguousTargetFeishuReply,
   buildConfiguredTargetsBulletLines,
 } from '../services/feishu-multi-target-replies.js';
@@ -178,6 +183,12 @@ export const registerFeishuWebhookRoutes = (
         !Array.isArray(rootBody.metadata)
           ? (rootBody.metadata as Record<string, unknown>)
           : {};
+
+      const consoleReqAtt = parseConsoleRequirementsAttachments(
+        rootMeta.consoleRequirementsAttachments
+      );
+      const rootMetaForPersistence =
+        stripConsoleRequirementsAttachmentsFromMetadata(rootMeta);
 
       const respondFeishuJson = (
         statusCode: number,
@@ -611,6 +622,12 @@ export const registerFeishuWebhookRoutes = (
         readonly task: NonNullable<Awaited<ReturnType<ITaskStore['getTask']>>>;
       }> => {
         const tid = params.taskRecord.taskId;
+        const mergedRaw = mergeConsoleTextFilesIntoRawRequirement(
+          params.rawForAgent,
+          consoleReqAtt.textFiles
+        ).slice(0, 500_000);
+        const imgs =
+          consoleReqAtt.images.length > 0 ? consoleReqAtt.images : undefined;
         const analysis = await analyzeRequirementsHttp({
           taskId: tid,
           ...(params.mode === 'revise' && params.priorPrdMarkdown !== undefined
@@ -619,7 +636,8 @@ export const registerFeishuWebhookRoutes = (
                 priorPrdMarkdown: params.priorPrdMarkdown,
               }
             : {}),
-          rawRequirement: params.rawForAgent,
+          rawRequirement: mergedRaw,
+          ...(imgs !== undefined ? { imageAttachments: imgs } : {}),
         });
         const updated = await taskStore.updateTask(tid, {
           status: 'completed',
@@ -724,7 +742,7 @@ export const registerFeishuWebhookRoutes = (
         const mergedMeta: Record<string, unknown> = {
           ...(baseTask.metadata ?? {}),
           source: 'feishu_webhook',
-          ...rootMeta,
+          ...rootMetaForPersistence,
           ...(channelId !== undefined ? { channelId } : {}),
           lastRequirementsReviseInbound: text,
           lastRequirementsReviseAt: new Date().toISOString(),
@@ -860,7 +878,7 @@ export const registerFeishuWebhookRoutes = (
         action,
         message: text,
         metadata: {
-          ...rootMeta,
+          ...rootMetaForPersistence,
           source: 'feishu_webhook',
           ...(channelId !== undefined ? { channelId } : {}),
           ...(workspaceResolution !== undefined

@@ -37,5 +37,9 @@ export default defineConfig(({ mode }) => {
       emptyOutDir: true,
       sourcemap: true,
     },
+    // pdfjs-dist ships ESM; pre-bundle caches churn causes "(Outdated Optimize Dep)" / 504 in dev.
+    optimizeDeps: {
+      exclude: ['pdfjs-dist'],
+    },
   };
 });

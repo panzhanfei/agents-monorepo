@@ -1,13 +1,22 @@
 import type { ILlmEnvConfig } from '../config/env.js';
 
-export type ILlmChatMessage = {
-  readonly role: 'system' | 'user' | 'assistant';
-  readonly content: string;
-};
+export type ILlmContentPart =
+  | { readonly type: 'text'; readonly text: string }
+  | { readonly type: 'image_url'; readonly image_url: { readonly url: string } };
+
+export type ILlmChatMessage =
+  | { readonly role: 'system'; readonly content: string }
+  | { readonly role: 'assistant'; readonly content: string }
+  | {
+      readonly role: 'user';
+      readonly content: string | readonly ILlmContentPart[];
+    };
 
 type IOpenAiChatResponse = {
   choices?: ReadonlyArray<{
-    message?: { content?: string | null };
+    message?: {
+      content?: string | null;
+    };
     finish_reason?: string | null;
   }>;
   error?: { message?: string };
@@ -24,6 +33,14 @@ export class LlmTransportError extends Error {
     this.statusCode = statusCode;
   }
 }
+
+const extractAssistantText = (raw: IOpenAiChatResponse): string => {
+  const c = raw.choices?.[0]?.message?.content;
+  if (typeof c !== 'string') {
+    return '';
+  }
+  return c.trim();
+};
 
 export const chatCompletionText = async (
   cfg: ILlmEnvConfig,
@@ -69,8 +86,8 @@ export const chatCompletionText = async (
       throw new LlmTransportError(detail, res.status);
     }
 
-    const text = raw.choices?.[0]?.message?.content?.trim();
-    if (text === undefined || text === '') {
+    const text = extractAssistantText(raw);
+    if (text === '') {
       throw new LlmTransportError('模型返回空内容');
     }
     return text;
