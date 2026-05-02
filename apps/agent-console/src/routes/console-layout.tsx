@@ -1,80 +1,26 @@
-import { List, Root, Trigger } from '@radix-ui/react-tabs';
-import type { ComponentProps, ComponentType, ReactElement } from 'react';
-import { useEffect, useState, useTransition } from 'react';
+import type { ReactElement } from 'react';
+import { useEffect, useTransition } from 'react';
 
 import { LogStreamPanel } from '~/components/LogStreamPanel';
 import { ProjectsConfigurator } from '~/components/ProjectsConfigurator';
 import { StreamingChatDock } from '~/components/StreamingChatDock';
 import { ThoughtBackdrop } from '~/components/ThoughtBackdrop';
-import { YamlWorkbench } from '~/components/YamlWorkbench';
 import { useConsoleConfigQuery } from '~/hooks/use-console-config-query';
 import { useFeishuRuntimeLogStream } from '~/hooks/use-feishu-runtime-log-stream';
 import { appendConsoleLog } from '~/stores/console-store';
-
-const TabsRoot = Root as ComponentType<ComponentProps<typeof Root>>;
-const TabsList = List as ComponentType<ComponentProps<typeof List>>;
-const TabsTrigger = Trigger as ComponentType<ComponentProps<typeof Trigger>>;
-
-type ITabId = 'projects' | 'yaml';
-
-const triggerClass =
-  'cursor-pointer rounded-full px-4 py-2 text-xs font-bold tracking-wide outline-none ring-offset-transparent transition-colors focus-visible:ring-2 focus-visible:ring-cyan-400/40 data-[state=inactive]:border data-[state=inactive]:border-white/10 data-[state=inactive]:bg-black/40 data-[state=inactive]:text-white/58 data-[state=inactive]:hover:border-cyan-400/28 data-[state=active]:bg-linear-to-r data-[state=active]:from-sky-400/90 data-[state=active]:to-fuchsia-500 data-[state=active]:text-black data-[state=active]:shadow-lg';
-
-type IConsoleSectionTabsProps = {
-  readonly value: ITabId;
-  readonly onValueChange: (v: ITabId) => void;
-};
-
-const ConsoleSectionTabs = ({
-  value,
-  onValueChange,
-}: IConsoleSectionTabsProps): ReactElement => {
-  const [tabBusy, startTab] = useTransition();
-
-  return (
-    <TabsRoot
-      value={value}
-      onValueChange={(v: string): void =>
-        startTab(() => {
-          if (v === 'projects' || v === 'yaml') {
-            onValueChange(v);
-          }
-        })
-      }
-    >
-      <TabsList
-        aria-busy={tabBusy}
-        aria-label="控制台分区"
-        className="flex flex-wrap gap-2 rounded-2xl border border-white/[0.08] bg-black/30 p-1"
-      >
-        <TabsTrigger className={triggerClass} value="projects">
-          多项目映射
-        </TabsTrigger>
-        <TabsTrigger className={triggerClass} value="yaml">
-          YAML 专家
-        </TabsTrigger>
-      </TabsList>
-    </TabsRoot>
-  );
-};
 
 export const ConsoleLayout = (): ReactElement => {
   useFeishuRuntimeLogStream();
   const { data, isError, isPending, error, refetch, isFetching } =
     useConsoleConfigQuery();
   const [reloadPending, startReloadTransition] = useTransition();
-  const [tab, setTab] = useState<ITabId>('projects');
 
   useEffect(() => {
     const p = data?.yamlPath;
     if (p !== undefined && p !== '') {
-      appendConsoleLog('info', `agents.config 已就绪: ${p}`);
+      appendConsoleLog('info', `目标编排配置已就绪: ${p}`);
     }
   }, [data?.yamlPath]);
-
-  useEffect(() => {
-    appendConsoleLog('info', `分区: ${tab}`);
-  }, [tab]);
 
   const onReload = (): void => {
     startReloadTransition(() => {
@@ -118,39 +64,32 @@ export const ConsoleLayout = (): ReactElement => {
 
         {data !== undefined ? (
           <p className="font-mono text-[0.74rem] text-white/45">
-            当前：`{data.yamlPath}`
+            目标工作区配置写入路径：`{data.yamlPath}`（仅 target 等段落由此页保存）
           </p>
         ) : null}
 
         <div className="flex flex-col gap-6">
           <main className="grid flex-1 gap-6 lg:grid-cols-[minmax(0,1.12fr)_minmax(0,0.88fr)] lg:items-stretch lg:max-h-[min(52rem,calc(100vh-9rem))] lg:min-h-0 lg:overflow-hidden">
             <section className="flex min-h-0 max-h-[min(52rem,calc(100vh-9rem))] flex-col gap-5 overflow-hidden rounded-[2rem] border border-white/[0.08] bg-linear-to-br from-black/45 via-[#0b102a]/70 to-[#1a0b2e]/70 p-7 shadow-[0_0_140px_rgba(147,51,234,0.12)] backdrop-blur-2xl">
-              <ConsoleSectionTabs onValueChange={setTab} value={tab} />
+              <h2 className="text-sm font-bold tracking-wide text-white/80">
+                多项目映射（目标仓库 workspace / Git）
+              </h2>
 
               <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
                 {isPending === true && data === undefined ? (
                   <div className="font-mono text-sm text-white/40">
-                    加载编排配置…
+                    加载目标配置…
                   </div>
                 ) : null}
 
                 {data !== undefined ? (
-                  tab === 'projects' ? (
-                    <ProjectsConfigurator
-                      config={{
-                        yamlPath: data.yamlPath ?? '',
-                        yamlRaw: data.yamlRaw ?? '',
-                        parsedUnknown: data.parsedUnknown,
-                      }}
-                    />
-                  ) : (
-                    <YamlWorkbench
-                      config={{
-                        yamlPath: data.yamlPath ?? '',
-                        yamlRaw: data.yamlRaw ?? '',
-                      }}
-                    />
-                  )
+                  <ProjectsConfigurator
+                    config={{
+                      yamlPath: data.yamlPath ?? '',
+                      yamlRaw: data.yamlRaw ?? '',
+                      parsedUnknown: data.parsedUnknown,
+                    }}
+                  />
                 ) : !isPending && !isError ? (
                   <div className="font-mono text-sm text-white/40">
                     无配置数据。
