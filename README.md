@@ -100,8 +100,8 @@ flowchart TB
     OpsMode[opsMode]
   end
   subgraph shared [共享]
-    Core[@agents/pipeline-core]
-    Cfg[@agents/agents-config]
+    Core["@agents/pipeline-core"]
+    Cfg["@agents/agents-config"]
   end
   subgraph orch_layout [编排仓 · 配置树]
     CT[customer-targets/\n&lt;id&gt; · YAML · ai-rules]
