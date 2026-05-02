@@ -10,6 +10,9 @@
     "TEST_AGENT_PORT",
     "OPS_AGENT_PORT",
     "REQUIREMENTS_AGENT_PORT",
+    "AGENT_CONSOLE_VITE_PORT",
+    "AGENT_CONSOLE_API_PORT",
+    "AGENT_CONSOLE_API_TOKEN",
     "TASK_STORE_DRIVER",
     "LLM_PROVIDER",
     "LLM_BASE_URL",
@@ -71,9 +74,11 @@
       "dependsOn": ["^check-types"]
     },
     "test": {
+      "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", "**/vitest.config.ts"]
     },
     "test:coverage": {
+      "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", "**/vitest.config.ts"]
     },
     "e2e": {

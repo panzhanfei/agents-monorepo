@@ -985,16 +985,26 @@ export const registerFeishuWebhookRoutes = (
               ? { workspacePath: workspaceResolution.workspacePathAbsolute }
               : {}),
           });
+          const codingOutcomeOk = codingResult.accepted;
           const updated = await taskStore.updateTask(task.taskId, {
-            status: 'completed',
+            status: codingOutcomeOk ? 'completed' : 'failed',
             metadata: {
               ...(task.metadata ?? {}),
+              ...(codingOutcomeOk
+                ? {}
+                : {
+                    codingConfigBlockingIssues:
+                      codingResult.configAssessment?.blockingIssues ?? [],
+                  }),
               codingSummarySnippet:
                 codingResult.summaryMarkdown.length > 2000
                   ? `${codingResult.summaryMarkdown.slice(0, 2000)}…`
                   : codingResult.summaryMarkdown,
               ...(codingResult.note !== undefined
                 ? { codingNote: codingResult.note }
+                : {}),
+              ...(codingResult.configAssessment !== undefined
+                ? { codingConfigAssessmentSnippet: codingResult.configAssessment }
                 : {}),
             },
           });
@@ -1006,7 +1016,8 @@ export const registerFeishuWebhookRoutes = (
             taskId: task.taskId,
             step: 'coding_agent',
             stage: 'done',
-            taskStatus: 'completed',
+            taskStatus: updated.status,
+            codingAccepted: codingResult.accepted,
           });
           const snippet =
             codingResult.summaryMarkdown.length > 2200
@@ -1017,17 +1028,29 @@ export const registerFeishuWebhookRoutes = (
             httpStatus: 201,
             taskId: task.taskId,
             action: 'code',
-            outcome: 'completed',
+            outcome: codingOutcomeOk ? 'completed' : 'config_blocked',
           });
+          const confirmHint =
+            codingResult.accepted &&
+            codingResult.configAssessment
+              ?.suggestCustomerConfirmWithoutMatchedAiRules === true
+              ? '【提示】客户项目目录下未匹配到任何 AI 规则文件；建议先在飞书请对方确认再继续后续全自动编码。\n\n'
+              : '';
+          const headline = codingOutcomeOk
+            ? ['【编码】任务 ' + task.taskId + '（MVP · 自检通过）'].join('')
+            : '【编码】配置自检未通过｜任务 ' + task.taskId;
+
           respondFeishuJson(201, {
-            ok: true,
+            ok: codingOutcomeOk,
             task: updated,
             coding: codingResult,
-            feishuReplyText: ['【编码】任务 ' + task.taskId + '（MVP 占位）', '', snippet].join(
-              '\n'
-            ),
+            feishuReplyText:
+              headline + '\n\n' + confirmHint + snippet,
           });
-          teeFeishuFlow('>>> ⑦ 响应', `201 编码完成 | ${task.taskId}`);
+          teeFeishuFlow(
+            '>>> ⑦ 响应',
+            `201 ${codingOutcomeOk ? '编码完成' : '编码自检未通过'} | ${task.taskId}`
+          );
           return;
         } catch (e) {
           const errMsg = e instanceof Error ? e.message : String(e);

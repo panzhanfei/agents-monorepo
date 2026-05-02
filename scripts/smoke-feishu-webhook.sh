@@ -9,7 +9,7 @@ REQ="${REQUIREMENTS_AGENT_BASE_URL:-http://127.0.0.1:4060}"
 
 echo "== GET $ORCH/health"
 curl -sS "$ORCH/health" && echo "" || {
-  echo "[fail] orchestrator 未响应。先运行: pnpm dev:feishu-min"
+  echo "[fail] orchestrator 未响应。先运行: bash scripts/dev-feishu-min.sh 或 pnpm dev"
   exit 1
 }
 echo "== GET $REQ/health"

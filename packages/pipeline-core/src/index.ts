@@ -55,6 +55,8 @@ export type {
 } from './requirements-contract.js';
 
 export type {
+  ICodingConfigBlockingIssue,
+  ICodingRunConfigAssessment,
   ICodingRunRequest,
   ICodingRunResponse,
 } from './coding-contract.js';

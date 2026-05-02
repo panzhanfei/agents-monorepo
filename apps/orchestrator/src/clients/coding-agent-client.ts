@@ -1,4 +1,8 @@
-import type { ICodingRunRequest, ICodingRunResponse } from '@agents/pipeline-core';
+import type {
+  ICodingRunRequest,
+  ICodingRunResponse,
+  ICodingRunConfigAssessment,
+} from '@agents/pipeline-core';
 
 export const getCodingAgentBaseUrl = (): string =>
   process.env.CODING_AGENT_BASE_URL?.trim() ?? 'http://127.0.0.1:4020';
@@ -40,6 +44,7 @@ export const runCodingHttp = async (
       summaryMarkdown?: string;
       note?: string;
       message?: string;
+      configAssessment?: ICodingRunConfigAssessment;
     };
 
     if (!res.ok) {
@@ -59,6 +64,9 @@ export const runCodingHttp = async (
       accepted: json.accepted,
       summaryMarkdown: json.summaryMarkdown,
       ...(json.note !== undefined ? { note: json.note } : {}),
+      ...(json.configAssessment !== undefined
+        ? { configAssessment: json.configAssessment }
+        : {}),
     };
   } finally {
     clearTimeout(timer);

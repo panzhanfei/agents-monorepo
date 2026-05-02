@@ -25,6 +25,11 @@ export {
   resolveReviewExecutionConfig,
   type IResolvedReviewExecutionConfig,
 } from './resolved-review.js';
+export {
+  evaluateCodingWorkspaceConfigAsync,
+  type ICodingBlockingIssue,
+  type ICodingWorkspaceConfigReport,
+} from './coding-workspace-eval.js';
 export { resolveFullTestCommand } from './resolved-pipeline.js';
 export {
   runShellCommand,

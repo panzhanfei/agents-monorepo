@@ -1,0 +1,12 @@
+{
+  "extends": "@repo/typescript-config/base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    "types": ["node"],
+    "lib": ["ES2022"],
+    "rootDir": "."
+  },
+  "include": ["vite.config.ts"]
+}

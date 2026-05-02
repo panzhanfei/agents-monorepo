@@ -4,6 +4,118 @@
 
 ---
 
+## 附图：系统与仓库结构（Mermaid）
+
+与 **§15**「六段 Skill 逻辑视图」互补：此处强调 **部署信任边界、Monorepo 分层、飞书主路径与本地 dev 启动关系**。
+
+### 附图-1 系统上下文（信任边界）
+
+```mermaid
+flowchart TB
+  subgraph external [外部]
+    U[飞书 / 用户]
+    LLM[(LLM\nOpenAI 兼容)]
+  end
+  subgraph dmz [可选公网]
+    NG[ngrok]
+  end
+  subgraph host [编排机 · 默认回环]
+    OR[orchestrator\n飞书验签 / 任务真相]
+    AG[各 Agent\nHTTP]
+    AC[agent-console\nUI + API]
+    CFG[(agents.config.yaml)]
+    E[(.env)]
+    WS[(客户业务仓库)]
+  end
+  U <--> NG
+  NG <--> OR
+  OR --> AG
+  OR --> CFG
+  AG --> WS
+  AG -.-> LLM
+  AC --> CFG
+  AC -.LLM 转发.-> LLM
+  OR -.-> E
+  AG -.-> E
+  AC -.-> E
+```
+
+### 附图-2 Monorepo：共享包 → 应用（主要依赖）
+
+```mermaid
+flowchart BT
+  subgraph pkgs [packages]
+    PC[pipeline-core]
+    ACfg[agents-config]
+    LOG[logger]
+    HTTP[http-errors]
+  end
+  subgraph apps [apps]
+    O[orchestrator]
+    RQ[requirements-agent]
+    CD[coding-agent]
+    RV[review-agent]
+    TS[test-agent]
+    OP[ops-agent]
+    UI[agent-console]
+  end
+  PC --> O
+  PC --> RQ
+  PC --> CD
+  PC --> RV
+  PC --> TS
+  PC --> OP
+  ACfg --> O
+  ACfg --> RV
+  ACfg --> CD
+  ACfg --> UI
+  LOG --> O
+  LOG --> RQ
+  LOG --> CD
+  LOG --> RV
+  LOG --> TS
+  LOG --> OP
+  LOG --> UI
+  HTTP --> O
+  HTTP --> RQ
+  HTTP --> CD
+  HTTP --> RV
+  HTTP --> TS
+  HTTP --> OP
+  HTTP --> UI
+```
+
+> **约定**：以各 `package.json` 为准；**禁止** `apps/*` 之间 **直接 import 源码**（经 HTTP 或 `@agents/*` 通信）。
+
+### 附图-3 飞书「编码」类动作：主路径（概念）
+
+```mermaid
+sequenceDiagram
+  participant F as 飞书
+  participant O as orchestrator
+  participant C as coding-agent
+  participant W as 客户仓库
+  F->>O: Webhook / 文本意图
+  O->>O: 验签 · 状态机 · workspace 解析
+  O->>C: POST /v1/coding/run
+  Note right of C: taskId, instruction, workspacePath?
+  C->>W: 路径存在性 · AI 规则 glob 枚举等自检
+  C-->>O: accepted / summaryMarkdown / configAssessment
+  O-->>F: feishuReplyText
+```
+
+### 附图-4 根目录 `pnpm dev`（ngrok + turbo）
+
+```mermaid
+flowchart LR
+  A[build @agents/*] --> B[ngrok → ORCHESTRATOR_PORT]
+  B --> C[turbo run dev\n并行各 app]
+```
+
+另：**无隧道**全量本地并行：`pnpm exec turbo run dev` 或 `bash scripts/dev-local-stack.sh`（仅脚本提示，非根 `package.json` 收录）。
+
+---
+
 ## 1. 信任边界与唯一入口
 
 | 位置 | 职责 |
@@ -162,6 +274,15 @@
 | **解析与校验** | JSON body 解析 + **Zod**（或同类）在 **handler 边界**校验；错误映射为稳定 JSON，**不**回堆栈给客户端。 |
 | **下游调用** | 对其它 Agent 使用 **带超时的 HTTP 客户端**（如 `fetch` + `AbortController`），`taskId` 经 header 或 body 贯穿。 |
 
+### 13.1 `agent-console`（可选 · 本地控制台）
+
+| 项 | 说明 |
+|------|------|
+| **定位** | **非**飞书第二入口；不写任务真相；供本机编辑配置、校验 YAML、试用流式 LLM。 |
+| **形态** | **Vite** 前端（默认 `127.0.0.1:5275`）+ **Express** API（默认 `:5280`，开发时由 Vite `proxy` 到 `/api`）。 |
+| **共享逻辑** | `@agents/agents-config` 解析/校验；AI 规则 glob 与 `review-agent` profile **同源**（便于 coding 侧自检对齐）。 |
+| **安全** | 写 `agents.config.yaml` 前会做备份；可选 **`AGENT_CONSOLE_API_TOKEN`** 要求 `Authorization: Bearer`；**禁止**将 `:5280` 无防护暴露到公网。 |
+
 **说明**：若个别 Agent 长期仅为极简 health，可暂缓引入 Express；**编排与飞书入口**应优先 Express，便于中间件与路由表演进。替换为 Fastify 等属同级别方案，需同步更新本文与规则。
 
 ---
@@ -173,7 +294,7 @@
 | [IMPLEMENTATION_ROADMAP.md](./IMPLEMENTATION_ROADMAP.md) | 由里到外的 **实现顺序** 与首个 Agent 验收 Checklist |
 | [FEISHU_COMMANDS.md](./FEISHU_COMMANDS.md) | 飞书指令格式与验证码（含 **§0 帮助 / `help`**） |
 | [CUSTOMER_GUIDE.md](./CUSTOMER_GUIDE.md) | 客户侧 **首次接触导引**（与群内「帮助」文案互补） |
-| `README.md` | 拓扑图与命令入口 |
+| `README.md` | **快速入口**：命令、apps 表、摘要拓扑图；细节以本文 **「附图」** 与后续章节为准 |
 | `.cursor/rules/orchestrator-app.mdc` 等 | 各 app 分层与目录习惯 |
 | `.cursor/rules/ops-agent-app.mdc` | ops-agent 职责与安全 |
 
@@ -259,4 +380,4 @@ flowchart LR
 
 ---
 
-*架构随实现迭代可修订本文；重大边界变更建议同步契约版本与 Release Note。§8–§11 对应前述风险域在规划期的纳入约定；§12 为 ops-agent 拆分策略；§13 为 HTTP 技术栈；**§15 为脱离编辑器的运行时 Skill v1 划分**。实现时可逐条对照验收。*
+*架构随实现迭代可修订本文；重大边界变更建议同步契约版本与 Release Note。文首 **「附图」** 为部署与仓库分层视图；§8–§11 对应前述风险域在规划期的纳入约定；§12 为 ops-agent 拆分策略；§13 为 HTTP 技术栈与 **agent-console** 补充；**§15** 为脱离编辑器的运行时 Skill v1 划分。实现时可逐条对照验收。*

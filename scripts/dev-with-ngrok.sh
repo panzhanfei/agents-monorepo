@@ -137,7 +137,7 @@ else
 fi
 echo "ngrok log         : $NGROK_LOG"
 echo "Stop ngrok only  : ./scripts/dev-ngrok-down.sh"
-echo "Sans ngrok       : pnpm dev:no-tunnel"
+echo "Sans ngrok       : pnpm exec turbo run dev（或 bash scripts/dev-local-stack.sh）"
 echo "聚合流转日志     : 另开终端 pnpm logs（tail logs/*.log）；仅 ngrok: pnpm logs ngrok"
 echo "=============================="
 echo ""

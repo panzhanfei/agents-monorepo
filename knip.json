@@ -4,6 +4,7 @@
     ".": {
       "ignoreDependencies": ["@vitest/coverage-v8"]
     },
+    "apps/agent-console": {},
     "apps/coding-agent": {},
     "apps/ops-agent": {},
     "apps/orchestrator": {},
