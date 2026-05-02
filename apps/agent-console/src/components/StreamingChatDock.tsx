@@ -17,6 +17,7 @@ import {
   materializeConsoleRequirementAttachments,
   type IMaterializedConsoleAttachments,
 } from '~/lib/materialize-requirement-attachments';
+import { useThoughtBackdropDrive } from '~/components/thought-backdrop-drive';
 
 export type IChatBubble = {
   readonly id: string;
@@ -269,6 +270,11 @@ export const StreamingChatDock = ({
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const bufferRef = useRef('');
+  const { setLinked: setBackdropLinked } = useThoughtBackdropDrive();
+
+  useEffect(() => {
+    setBackdropLinked(streaming || input.trim().length > 0);
+  }, [streaming, input, setBackdropLinked]);
 
   const tailFingerprint =
     `${String(messages[messages.length - 1]?.id ?? '')}:${String(

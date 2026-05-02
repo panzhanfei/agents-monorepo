@@ -3,8 +3,14 @@ import type {
   IRequirementsAnalysisResponse,
 } from '@agents/pipeline-core';
 
+import { resolveAgentHttpBaseUrlFromEnv } from './agent-http-base-url.js';
+
 export const getRequirementsAgentBaseUrl = (): string =>
-  process.env.REQUIREMENTS_AGENT_BASE_URL?.trim() ?? 'http://127.0.0.1:4060';
+  resolveAgentHttpBaseUrlFromEnv({
+    explicitBaseUrlEnv: process.env.REQUIREMENTS_AGENT_BASE_URL,
+    portEnv: process.env.REQUIREMENTS_AGENT_PORT,
+    portDefault: 4060,
+  });
 
 export const analyzeRequirementsHttp = async (
   body: IRequirementsAnalysisRequest,

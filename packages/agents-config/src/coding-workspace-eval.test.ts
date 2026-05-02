@@ -37,7 +37,7 @@ describe('evaluateCodingWorkspaceConfigAsync', () => {
     expect(report.suggestCustomerConfirmWithoutMatchedAiRules).toBe(false);
   });
 
-  it('suggests customer confirm when no ai rule files under workspace', async () => {
+  it('without target id does not suggest upload-only confirm', async () => {
     const ws = mkdtempSync(path.join(os.tmpdir(), 'coding-eval-'));
     tmpDirs.push(ws);
 
@@ -47,27 +47,85 @@ describe('evaluateCodingWorkspaceConfigAsync', () => {
     });
 
     expect(report.blockingIssues).toHaveLength(0);
+    expect(report.workspaceAiRuleFilesMatchedCount).toBe(0);
+    expect(report.orchestrationAiRuleFilesMatchedCount).toBe(0);
+    expect(report.aiRuleFilesMatchedCount).toBe(0);
+    expect(report.suggestCustomerConfirmWithoutMatchedAiRules).toBe(false);
+    expect(report.aiRulesGlobEffective).toContain(
+      '缺少 customerTargetProjectId',
+    );
+  });
+
+  it('reports missing-orchestration when target id bound but folder empty', async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'coding-eval-bound-'));
+    tmpDirs.push(root);
+    writeFileSync(
+      path.join(root, 'agents.config.yaml'),
+      [
+        'pipeline:',
+        '  fullTestCommand: echo',
+        'review:',
+        '  activeProfile: px',
+        '  profiles:',
+        '    px:',
+        '      aiRulesGlob: "*.md"',
+        '      customerRulesDir: rr',
+        '      blockingCommands: []',
+      ].join('\n'),
+      'utf8',
+    );
+    const ws = mkdtempSync(path.join(root, 'ws-bound-'));
+
+    const report = await evaluateCodingWorkspaceConfigAsync({
+      monorepoRoot: root,
+      workspaceAbsolute: ws,
+      customerTargetProjectId: 'svcEmpty',
+    });
+
+    expect(report.blockingIssues).toHaveLength(0);
+    expect(report.orchestrationAiRuleFilesMatchedCount).toBe(0);
     expect(report.aiRuleFilesMatchedCount).toBe(0);
     expect(report.suggestCustomerConfirmWithoutMatchedAiRules).toBe(true);
   });
 
-  it('counts files matching aiRulesGlob from agents.config', async () => {
-    const ws = mkdtempSync(path.join(os.tmpdir(), 'coding-eval-rules-'));
-    tmpDirs.push(ws);
-    mkdirSync(path.join(ws, '.cursor', 'rules'), { recursive: true });
+  it('counts customer-targets/<id>/ai-rules when customerTargetProjectId is set', async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'orch-ai-rules-eval-'));
+    tmpDirs.push(root);
     writeFileSync(
-      path.join(ws, '.cursor', 'rules', 'sample.mdc'),
-      'rule-body',
-      'utf8'
+      path.join(root, 'agents.config.yaml'),
+      [
+        'pipeline:',
+        '  fullTestCommand: echo',
+        'review:',
+        '  activeProfile: px',
+        '  profiles:',
+        '    px:',
+        '      aiRulesGlob: __no_match__/nope.md',
+        '      customerRulesDir: zz',
+        '      blockingCommands: []',
+      ].join('\n'),
+      'utf8',
+    );
+    const ws = mkdtempSync(path.join(root, 'ws-inner-'));
+    mkdirSync(path.join(root, 'customer-targets', 'svc1', 'ai-rules'), {
+      recursive: true,
+    });
+    writeFileSync(
+      path.join(root, 'customer-targets', 'svc1', 'ai-rules', 'rules.mdc'),
+      'orc',
+      'utf8',
     );
 
     const report = await evaluateCodingWorkspaceConfigAsync({
-      monorepoRoot,
+      monorepoRoot: root,
       workspaceAbsolute: ws,
+      customerTargetProjectId: 'svc1',
     });
 
     expect(report.blockingIssues).toHaveLength(0);
-    expect(report.aiRuleFilesMatchedCount).toBeGreaterThanOrEqual(1);
+    expect(report.workspaceAiRuleFilesMatchedCount).toBe(0);
+    expect(report.orchestrationAiRuleFilesMatchedCount).toBe(1);
+    expect(report.aiRuleFilesMatchedCount).toBe(1);
     expect(report.suggestCustomerConfirmWithoutMatchedAiRules).toBe(false);
   });
 });

@@ -1,6 +1,7 @@
 import type { RequestHandler } from 'express';
 import { AppError } from '@agents/http-errors';
 import type { ILogger } from '@agents/logger';
+import { TARGET_PROJECT_ID_RE } from '@agents/agents-config';
 import type { IReviewRunRequest } from '@agents/pipeline-core';
 import { z } from 'zod';
 import { getLlmEnvConfig } from '../config/env.js';
@@ -10,6 +11,7 @@ import { runReviewPipeline } from '../services/run-review-pipeline.js';
 export const reviewRunBodySchema = z.object({
   taskId: z.string().min(1),
   workspacePath: z.string().optional(),
+  customerTargetProjectId: z.string().regex(TARGET_PROJECT_ID_RE).optional(),
   implementationRole: z.enum(['frontend', 'backend', 'fullstack']).optional(),
   stackProfile: z.string().optional(),
   changeSummary: z.string().max(80_000).optional(),

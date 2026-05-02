@@ -72,9 +72,10 @@ export const buildCodingPrereqBlockedFeishuReply = (
   }
 
   lines.push(
-    '— 可选（默认连本机 4020 端口即可）—',
+    '— 可选（本机单机默认可不写完整基址）—',
     '• CODING_AGENT_INTERNAL_TOKEN：若 coding-agent 进程配置了 Bearer 校验，编排器侧必须设为**相同**令牌，否则会得到 401。',
-    '• `agents.config.yaml` 里 `agents.coding-agent.port` 应与实际监听端口一致，并和 `CODING_AGENT_BASE_URL` 对应。',
+    '• `CODING_AGENT_PORT`（或默认值 4020）与 coding-agent 实际监听端口一致即可；不写 `CODING_AGENT_BASE_URL` 时编排器会按 `AGENTS_INTERNAL_HTTP_HOST`（默认同机 127.0.0.1）自动生成 `http://…:端口`。跨机或 HTTPS / 网关再写完整 BASE_URL。',
+    '• `agents.config.yaml` 里 `agents.coding-agent.port` 仅供文档与各进程约定，env 仍为权威覆盖。',
     '',
     '更多占位与说明见仓库根目录 `.env.example`。'
   );

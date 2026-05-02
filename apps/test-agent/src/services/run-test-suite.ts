@@ -23,8 +23,29 @@ export const runFullTestSuite = async (
   });
 
   const cfg = await loadAgentsConfig({ monorepoRoot: deps.monorepoRoot });
-  const command = resolveFullTestCommand(cfg);
-  const timeoutMs = Number(process.env.TEST_GATE_TIMEOUT_MS ?? '3600000');
+  const command = resolveFullTestCommand(
+    cfg,
+    process.env,
+    input.fullTestCommand
+  );
+  const yamlTimeoutRaw = (
+    cfg.pipeline as unknown as {
+      readonly testGateTimeoutMs?: unknown;
+    }
+  ).testGateTimeoutMs;
+  const yamlTimeout =
+    typeof yamlTimeoutRaw === 'number' &&
+    Number.isFinite(yamlTimeoutRaw) &&
+    yamlTimeoutRaw > 0
+      ? yamlTimeoutRaw
+      : undefined;
+  const envGate = process.env.TEST_GATE_TIMEOUT_MS?.trim() ?? '';
+  const timeoutMs =
+    envGate !== ''
+      ? Number(envGate)
+      : yamlTimeout !== undefined
+        ? yamlTimeout
+        : 3_600_000;
 
   const started = Date.now();
   deps.logger.info('test_suite_start', {

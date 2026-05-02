@@ -9,6 +9,7 @@
 ### 1. 配置加载与校验
 
 - 启动时合并 **`agents.config.yaml`** 与 **`.env`**，用 schema（推荐 **Zod**）校验。
+- **多目标**：根 YAML 中 **`target.projects`** 常见为 **`{ id, definitionPath }`** 指向 **`customer-targets/<id>/target.yaml`**；加载路径经由 **`hydrateAgentsConfigTargetProjects`** 合并磁盘定义与内联字段（见 [ARCHITECTURE.md §3](./ARCHITECTURE.md#3-配置架构yaml--env)）。控制台可维护 **`ai-rules/`** 规则文件。
 - 尽早发现：缺字段、端口语义冲突、`TARGET_PROJECT_SOURCE=local` 却仍强依赖远端 URL、`security.requiredForActions` 与路由表不一致等。
 - **验收**：故意填错配置时进程启动失败且错误信息可读。
 

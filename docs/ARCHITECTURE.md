@@ -6,7 +6,7 @@
 
 ## 附图：系统与仓库结构（Mermaid）
 
-与 **§15**「六段 Skill 逻辑视图」互补：此处强调 **部署信任边界、Monorepo 分层、飞书主路径与本地 dev 启动关系**。
+与 **§15**「六段 Skill 逻辑视图」互补：此处强调 **部署信任边界、Monorepo 分层、`customer-targets` 配置合并、飞书主路径与本地 dev 启动关系**。
 
 ### 附图-1 系统上下文（信任边界）
 
@@ -24,6 +24,7 @@ flowchart TB
     AG[各 Agent\nHTTP]
     AC[agent-console\nUI + API]
     CFG[(agents.config.yaml)]
+    CT[(customer-targets/\n各 id · target.yaml · ai-rules)]
     E[(.env)]
     WS[(客户业务仓库)]
   end
@@ -34,11 +35,14 @@ flowchart TB
     AG --> WS
     AG -.-> LLM
     AC --> CFG
+    AC --> CT
+    AC -.读写根 .-> E
     AC -.LLM 转发.-> LLM
     AC -.pipeline 联调.-> OR
+    CFG -.definitionPath.-> CT
+    AG -.绑定目标 id 时读 ai-rules.-> CT
   OR -.-> E
   AG -.-> E
-  AC -.-> E
 ```
 
 ### 附图-2 Monorepo：共享包 → 应用（主要依赖）
@@ -115,6 +119,29 @@ flowchart LR
 
 另：**无隧道**全量本地并行：`pnpm exec turbo run dev` 或 `bash scripts/dev-local-stack.sh`（仅脚本提示，非根 `package.json` 收录）。
 
+### 附图-5 `customer-targets/` 与配置合并（概念）
+
+```mermaid
+flowchart TB
+  subgraph root [编排仓根]
+    ROOTYAML[agents.config.yaml\ntarget.projects 桩]
+    ENV[(.env)]
+    subgraph ct [customer-targets/id/]
+      DEF[target.yaml\nworkspacePath · Git · 运维…]
+      AIR[ai-rules/\n*.md · *.mdc]
+    end
+  end
+  ROOTYAML -->|definitionPath| DEF
+  hydrate[hydrateAgentsConfigTargetProjects\n合并 DEF + 内联覆盖]
+  DEF --> hydrate
+  ROOTYAML --> hydrate
+  hydrate --> runtime[ITargetProjectEntry[]\n供 orchestrator / Agent]
+  AC[agent-console] --> DEF
+  AC --> AIR
+  AC --> ENV
+  AC --> ROOTYAML
+```
+
 ---
 
 ## 1. 信任边界与唯一入口
@@ -154,7 +181,9 @@ flowchart LR
 - **各 Agent**：理想为 **最小子集**（本服务端口、超时、`TARGET_WORKSPACE_PATH` **或单次请求体内的** `workspacePath` 字段等），避免每个 Agent 再充当全局配置中心。
 - **实现落点**：共享 **`loadAgentsConfig()`**（`@agents/agents-config`）解析 `agents.config.yaml` 并经 **Zod 校验**，而非分散重复读文件。
 
-**多客户业务仓库（可选）**：`agents.config.yaml` 可在 `target.projects` 中登记多个 `{ id, workspacePath, label? }`。**飞书链路**由 orchestrator 解析「本会话绑定 / 本条首行目标 / env 默认 id」后用 **解析得到的绝对路径** 调用编码、审核与测试 Agent（契约字段 `workspacePath`，与单机 `TARGET_WORKSPACE_PATH` 等价位）。详见 `docs/FEISHU_COMMANDS.md`。未配置 `projects` 时行为与单目标一致。
+**多目标业务仓库（推荐形态）**：`agents.config.yaml` 的 `target.projects` 每项为 **`{ id, definitionPath?, …内联可选字段 }`**（Zod：`@agents/agents-config`）。推荐 **`definitionPath`** 指向编排仓内 **`customer-targets/<id>/target.yaml`**（单文件里含 `workspacePath`、`label`、Git/运维字段等）；启动时 **`hydrateAgentsConfigTargetProjects`** 把定义文件与 YAML 行上非空内联字段 **合并** 为运行时 **`ITargetProjectEntry[]`**（合并后不再暴露 `definitionPath`）。**飞书链路**仍由 orchestrator 按「会话绑定 / 首行目标指令 / `defaultProjectId`」选出 **单一 `id`**，解析出 **`workspacePath`（绝对路径）** 再调用编码、审核与测试 Agent（与单机 `.env` 的 `TARGET_WORKSPACE_PATH` 等价语义）。详见 `docs/FEISHU_COMMANDS.md`。未配置 `projects` 时可回落 **遗留** 配置。
+
+**每目标编排侧语义规则**：目录 **`customer-targets/<id>/ai-rules/`**（`*.md` / `*.mdc`）由 **agent-console** 上传并随编排仓 Git 版本化；当任务 **绑定该 `id`** 时，**review-agent** 可将 **LLM 规则输入** 限定为上述编排目录（与客户仓内 `review.profiles.*.aiRulesGlob` / `customerRulesDir` **脱钩**）；**确定性 blocking** 仍以 **`agents.config.yaml` → `review.profiles.*.blockingCommands`**（及 env 覆盖）为真源。未绑定多目标或旧链路仍可按 profile 扫客户工作区。
 
 **客户业务仓前置条件**：实际执行仍以 **某一个解析后的 workspace 根** 为客户项目 cwd；须在文档或自检中约定 **Node / pnpm（或包管理器）/ 可选 Turbo 版本** 与客户仓一致，否则「模板里能跑、客户仓里挂」的漂移属于 **环境类问题**，不靠编排代码单独解决。
 
@@ -283,18 +312,23 @@ flowchart LR
 |------|------|
 | **定位** | **非**飞书第二入口；**不写任务真相**（任务仍以 orchestrator + `ITaskStore` 为准）。供本机/受信网络内编辑 `agents.config.yaml`、校验 Zod、试用流式 LLM、按与飞书同构的 body **联调编排器**。 |
 | **形态** | **Vite** 前端（默认 `127.0.0.1:5275`）+ **Express** API（默认 `127.0.0.1:5280`）。开发时前端将 **`/api/*`** 代理到 API 端口；**生产构建** 由服务端 `express.static` 托管 `dist/client`。 |
-| **共享逻辑** | **`@agents/agents-config`**：`agentsConfigSchema`、解析路径、`target` 段落与审核 profile **与编排/评审同源**。 |
-| **安全** | 写 `agents.config.yaml` 前 **自动备份**（时间戳 `.bak.*`）；可选 **`AGENT_CONSOLE_API_TOKEN`**：`/api/*`（除健康检查策略外）要求 **`Authorization: Bearer <同值>`**；**禁止**将 API 端口无防护暴露公网。客户端可选在 UI 内写入 **`localStorage`** 的 Bearer 草稿（仅本机浏览器，与编排密钥无关）。 |
+| **共享逻辑** | **`@agents/agents-config`**：`agentsConfigSchema`、`loadAgentsConfig` / **`hydrateAgentsConfigTargetProjects`**、`customer-targets` 布局与 **`TARGET_PROJECT_ID_RE`** 等 **与 orchestrator / 各 Agent / 控制台同源**；下游 Agent HTTP 基址拼接见 orchestrator `resolveAgentHttpBaseUrlFromEnv`。 |
+| **安全** | 写 `agents.config.yaml` / `.env` / `target.yaml` 前 **自动备份**（时间戳 `.bak.*`）；可选 **`AGENT_CONSOLE_API_TOKEN`**：`/api/*`（健康检查与 SSE 代理等豁免策略以实现为准）要求 **`Authorization: Bearer <同值>`**；**禁止**将 API 端口无防护暴露公网。Bearer 可存浏览器 **`localStorage`**（仅本机，与飞书/编排密钥无关）。 |
 
 #### 服务端 HTTP 面（摘要）
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | `GET` | `/health`、`/api/health` | 存活探测（是否需鉴权以实现为准）。 |
-| `GET` | `/api/config` | 当前配置文件路径、`yamlRaw`、Zod 解析结果及供表单使用的 `parsedUnknown` 等。 |
+| `GET` | `/api/config` | 配置路径、`yamlRaw`、`parsedUnknown`（原始 YAML 解析）及 **`parsedHydrated`**（合并 **`hydrateAgentsConfigTargetProjects`** 后的 `target.projects`，供控制台展示）。 |
 | `POST` | `/api/config/validate` | 仅校验请求体中的 YAML 文本，**不写盘**。 |
 | `PUT` | `/api/config` | 校验通过后整文件写回 `agents.config.yaml`（先备份）。 |
-| `PUT` | `/api/config/target-projects` | 在保留其余 YAML 结构的前提下更新 `target` 段（`source`、`workspacePath`、`gitRepoUrl`、`projects` 等）。 |
+| `PUT` | `/api/config/target-projects` | 校验 **`targetProjectEntrySchema`** 列表；为每个 `id` 写 **`customer-targets/<id>/target.yaml`**，并把根 YAML 的 **`target.projects`** 收敛为 **`{ id, definitionPath }`** 桩（`definitionPath` 相对编排根）。 |
+| `GET` | `/api/console-env` | 读取 monorepo 根 **`.env`**（解析为键值；不存在则空）。 |
+| `PUT` | `/api/console-env` | **合并写回** `.env`（保留原有 `#` 注释行与其它非赋值行；写前可选时间戳备份）。 |
+| `GET` | `/api/target-projects/:projectId/ai-rules` | 列出该目标 **`customer-targets/<id>/ai-rules/`** 下规则文件名与大小。 |
+| `POST` | `/api/target-projects/:projectId/ai-rules` | **`multipart/form-data`** 字段 **`files`**，写入同上目录（文件名消毒、单文件 ≤ 2MiB）。 |
+| `DELETE` | `/api/target-projects/:projectId/ai-rules/:fileName` | 删除该目录下单个 `.md` / `.mdc`。 |
 | `POST` | `/api/chat/stream` | **OpenAI 兼容**对话流式转发（体为 `messages[]`，边界校验以服务端 Zod 为准）。 |
 | `POST` | `/api/pipeline/invoke` | 将 **`text`**（及可选 **`channelId`**、引用消息 id、**`metadata`**）转发至 **`AGENTS_ORCHESTRATOR_URL`**（默认同机 orchestrator），供 UI **流水线指令**与飞书语义对齐；编排器须已可达。 |
 
@@ -413,4 +447,4 @@ flowchart LR
 
 ---
 
-*架构随实现迭代可修订本文；重大边界变更建议同步契约版本与 Release Note。文首 **「附图」** 为部署与仓库分层视图；§8–§11 对应前述风险域在规划期的纳入约定；§12 为 ops-agent 拆分策略；§13 为 HTTP 技术栈与 **agent-console** 补充；**§15** 为脱离编辑器的运行时 Skill v1 划分。实现时可逐条对照验收。*
+*架构随实现迭代可修订本文；重大边界变更建议同步契约版本与 Release Note。文首 **「附图」** 含部署上下文、Monorepo 依赖、`customer-targets` 合并视图（附图-5）、飞书主路径与 §15 Skill 逻辑视图；§8–§11 对应前述风险域；§12 为 ops-agent 拆分策略；§13 为 HTTP 技术栈与 **agent-console** API；**§15** 为运行时 Skill v1。*

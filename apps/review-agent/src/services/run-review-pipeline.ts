@@ -6,6 +6,8 @@ import type {
   IReviewRunResponse,
 } from '@agents/pipeline-core';
 import {
+  TARGET_PROJECT_ID_RE,
+  absoluteCustomerTargetAiRulesPath,
   loadAgentsConfig,
   resolveReviewExecutionConfig,
   resolveWorkspacePath,
@@ -31,7 +33,11 @@ export const runReviewPipeline = async (
   });
 
   const cfg = await loadAgentsConfig({ monorepoRoot: deps.monorepoRoot });
-  const reviewCfg = resolveReviewExecutionConfig(cfg);
+  const reviewCfg = resolveReviewExecutionConfig(cfg, process.env);
+
+  const tidRaw = input.customerTargetProjectId?.trim() ?? '';
+  const targetUsesOrchestrationRulesOnly =
+    tidRaw !== '' && TARGET_PROJECT_ID_RE.test(tidRaw);
 
   const gateTimeout = Number(process.env.REVIEW_GATE_TIMEOUT_MS ?? '600000');
   const gateResults: IReviewGateCommandResult[] = [];
@@ -93,11 +99,22 @@ export const runReviewPipeline = async (
   }
 
   const maxChars = Number(process.env.REVIEW_RULES_MAX_CHARS ?? '120000');
+
+  const orchDirs: string[] = [];
+  if (targetUsesOrchestrationRulesOnly) {
+    orchDirs.push(
+      absoluteCustomerTargetAiRulesPath(deps.monorepoRoot, tidRaw),
+    );
+  }
+
   const bundle = await loadReviewRulesBundle({
     workspaceRoot: workspace,
     aiRulesGlob: reviewCfg.aiRulesGlob,
     customerRulesDir: reviewCfg.customerRulesDir,
-    extraRelativeFiles: reviewCfg.extraConfigFiles,
+    extraRelativeFiles: reviewCfg.extraConfigFiles ?? [],
+    monorepoRoot: deps.monorepoRoot,
+    orchestrationRuleDirs: orchDirs,
+    workspaceRuleTreesSkipped: targetUsesOrchestrationRulesOnly,
     maxChars,
     logger: deps.logger,
   });

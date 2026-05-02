@@ -7,6 +7,7 @@ import {
   extractLeadingTargetDirective,
   isMultiTargetAgentsConfig,
   loadAgentsConfig,
+  lookupTargetProjectById,
   normalizeTargetProjects,
   parseSelectTargetMessage,
   resolveFeishuTaskWorkspace,
@@ -169,6 +170,7 @@ export const registerFeishuWebhookRoutes = (
         | {
             workspacePathAbsolute: string;
             targetProjectId?: string;
+            fullTestCommand?: string;
           }
         | undefined;
       let instructionBodyForWorkspaceActions = text;
@@ -570,9 +572,23 @@ export const registerFeishuWebhookRoutes = (
           teeFeishuFlow('>>> ⑦ 响应', '200 目标 id 无效');
           return;
         }
+        const tidResolved = pick.targetProjectId?.trim() ?? '';
+        let targetExtras: {
+          fullTestCommand?: string;
+        } = {};
+        if (tidResolved !== '') {
+          const hit = lookupTargetProjectById(agentsCfg, tidResolved);
+          if (hit !== undefined) {
+            const f = hit.fullTestCommand?.trim() ?? '';
+            targetExtras = {
+              ...(f !== '' ? { fullTestCommand: f } : {}),
+            };
+          }
+        }
         workspaceResolution = {
           workspacePathAbsolute: pick.workspacePathAbsolute,
           targetProjectId: pick.targetProjectId,
+          ...targetExtras,
         };
         if (action === 'code') {
           const codingPrereqs = collectCodingFeishuPrereqIssues(process.env, {
@@ -1011,11 +1027,16 @@ export const registerFeishuWebhookRoutes = (
         });
         teeFeishuFlow('>>> ⑤ 执行中', '编码 → coding-agent');
         try {
+          const wx = workspaceResolution;
           const codingResult = await runCodingHttp({
             taskId: task.taskId,
             instruction: instructionBodyForWorkspaceActions,
-            ...(workspaceResolution !== undefined
-              ? { workspacePath: workspaceResolution.workspacePathAbsolute }
+            ...(wx !== undefined
+              ? { workspacePath: wx.workspacePathAbsolute }
+              : {}),
+            ...(wx?.targetProjectId !== undefined &&
+            wx.targetProjectId.trim() !== ''
+              ? { customerTargetProjectId: wx.targetProjectId.trim() }
               : {}),
           });
           const codingOutcomeOk = codingResult.accepted;
@@ -1067,7 +1088,7 @@ export const registerFeishuWebhookRoutes = (
             codingResult.accepted &&
             codingResult.configAssessment
               ?.suggestCustomerConfirmWithoutMatchedAiRules === true
-              ? '【提示】客户项目目录下未匹配到任何 AI 规则文件；建议先在飞书请对方确认再继续后续全自动编码。\n\n'
+              ? '【提示】该目标的 Agent Console 「编排审核规则」尚未上传 `.mdc` / `.md`；建议补齐后再全自动编码。\n\n'
               : '';
           const headline = codingOutcomeOk
             ? ['【编码】任务 ' + task.taskId + '（MVP · 自检通过）'].join('')
@@ -1120,10 +1141,15 @@ export const registerFeishuWebhookRoutes = (
         });
         teeFeishuFlow('>>> ⑤ 执行中', '审核 → review-agent');
         try {
+          const wxReview = workspaceResolution;
           const review = await runReviewHttp({
             taskId: task.taskId,
-            ...(workspaceResolution !== undefined
-              ? { workspacePath: workspaceResolution.workspacePathAbsolute }
+            ...(wxReview !== undefined
+              ? { workspacePath: wxReview.workspacePathAbsolute }
+              : {}),
+            ...(wxReview?.targetProjectId !== undefined &&
+            wxReview.targetProjectId.trim() !== ''
+              ? { customerTargetProjectId: wxReview.targetProjectId.trim() }
               : {}),
           });
           const summarySnippet =
@@ -1219,10 +1245,14 @@ export const registerFeishuWebhookRoutes = (
         });
         teeFeishuFlow('>>> ⑤ 执行中', '测试 → test-agent');
         try {
+          const wxTest = workspaceResolution;
           const testResult = await runTestHttp({
             taskId: task.taskId,
-            ...(workspaceResolution !== undefined
-              ? { workspacePath: workspaceResolution.workspacePathAbsolute }
+            ...(wxTest !== undefined
+              ? { workspacePath: wxTest.workspacePathAbsolute }
+              : {}),
+            ...(wxTest?.fullTestCommand !== undefined
+              ? { fullTestCommand: wxTest.fullTestCommand }
               : {}),
           });
           const updated = await taskStore.updateTask(task.taskId, {

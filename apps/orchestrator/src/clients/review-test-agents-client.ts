@@ -5,8 +5,14 @@ import type {
   ITestRunResponse,
 } from '@agents/pipeline-core';
 
+import { resolveAgentHttpBaseUrlFromEnv } from './agent-http-base-url.js';
+
 export const getReviewAgentBaseUrl = (): string =>
-  process.env.REVIEW_AGENT_BASE_URL?.trim() ?? 'http://127.0.0.1:4030';
+  resolveAgentHttpBaseUrlFromEnv({
+    explicitBaseUrlEnv: process.env.REVIEW_AGENT_BASE_URL,
+    portEnv: process.env.REVIEW_AGENT_PORT,
+    portDefault: 4030,
+  });
 
 export const runReviewHttp = async (
   body: IReviewRunRequest,
@@ -65,7 +71,11 @@ export const runReviewHttp = async (
 };
 
 export const getTestAgentBaseUrl = (): string =>
-  process.env.TEST_AGENT_BASE_URL?.trim() ?? 'http://127.0.0.1:4041';
+  resolveAgentHttpBaseUrlFromEnv({
+    explicitBaseUrlEnv: process.env.TEST_AGENT_BASE_URL,
+    portEnv: process.env.TEST_AGENT_PORT,
+    portDefault: 4041,
+  });
 
 export const runTestHttp = async (
   body: ITestRunRequest,

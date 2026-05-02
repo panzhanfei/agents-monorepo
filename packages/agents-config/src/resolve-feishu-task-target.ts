@@ -21,7 +21,19 @@ export const isMultiTargetAgentsConfig = (config: IAgentsConfig): boolean =>
 
 export const normalizeTargetProjects = (
   config: IAgentsConfig
-): readonly ITargetProjectEntry[] => config.target?.projects ?? [];
+): readonly ITargetProjectEntry[] =>
+  (config.target?.projects ?? []) as readonly ITargetProjectEntry[];
+
+export const lookupTargetProjectById = (
+  config: IAgentsConfig,
+  targetId: string
+): ITargetProjectEntry | undefined => {
+  const t = targetId.trim();
+  if (t === '') {
+    return undefined;
+  }
+  return normalizeTargetProjects(config).find((p) => p.id === t);
+};
 
 /** 无前缀多目标条目时沿用 env / YAML / 默认值的工作区路径。 */
 export const resolveLegacyTargetWorkspace = (

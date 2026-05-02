@@ -7,7 +7,7 @@
 | 典型场景 | 说明 |
 |----------|------|
 | 离桌补需求 | 群里发「需求分析：…」出 PRD；要改同一版用 **「需求分析 修订 &lt;任务ID&gt;：…」**（见飞书「帮助」文案） |
-| 离桌跟质量 | 「审核」「全量测试」在 `TARGET_WORKSPACE_PATH` 下跑门禁与测试 |
+| 离桌跟质量 | 「审核」「全量测试」在 **当前任务绑定的工作区**（`.env` 的 `TARGET_WORKSPACE_PATH` 或多目标 **`target.projects`** 解析路径）下跑门禁与测试 |
 | 离桌触运维 | 发包、巡检等走 `ops-agent`，敏感动作受验证码等配置约束（见 `.env.example`、`agents.config.yaml`） |
 | 重置编排记忆 | 群内发 **「清空任务」**：`TASK_STORE_DRIVER=memory` 时清空本地任务表（不删代码仓库）；要避免误用旧任务 ID 或嫌「状态」太乱时用 |
 
@@ -20,10 +20,10 @@
 | **`orchestrator`** | **唯一对外飞书/Webhook 边界**：意图路由、验证码、任务状态、调用各 Agent、汇总 `feishuReplyText` |
 | **`requirements-agent`** | **需求分析**：口头需求 → 结构化 PRD / 验收标准 / 风险 |
 | **`coding-agent`** | 编码（当前 MVP：配置自检与占位应答，演进真实改仓） |
-| **`review-agent`** | 审核：确定性门禁（脚本）+ 与 **`agents.config` 同源** AI 规则 glob |
+| **`review-agent`** | 审核：确定性门禁（脚本）+ LLM 规则（`review.profiles`；**会话绑定目标 id 时**语义规则可限定为 **`customer-targets/<id>/ai-rules`**） |
 | **`test-agent`** | 全量测试命令与报告摘要 |
 | **`ops-agent`** | 打包 / 发放 / 备份回滚 / 只读巡检（由配置与安全口令约束） |
-| **`agent-console`** | **可选本地 Web UI**（React 19 + Vite + Express API）：多项目 `target` 表单、整份 YAML 专家模式（校验/写回/备份）、经 API 转发的 **LLM 流式** 与 **流水线指令**（语义对齐 orchestrator）；**不是**飞书第二入口，默认仅回环。技术栈与 HTTP 面见 **`docs/ARCHITECTURE.md` §13.1**。 |
+| **`agent-console`** | **可选本地 Web UI**（React 19 + Vite + Express API）：**当前项目**（根 `.env` 分组编辑）、**目标项目**（`customer-targets` / `agents.config` `target`）、`*.mdc` / `*.md` **按目标上传至 `ai-rules/`**、YAML 专家模式、LLM 流式与 **`/api/pipeline/invoke`** 联调 orchestrator；**不是**飞书第二入口，默认仅回环。详见 **`docs/ARCHITECTURE.md` §13.1**。 |
 
 默认 HTTP 端口见 **`agents.config.yaml`** 与 **`.env.example`**（编排约 **4010–4060**；控制台默认 **5275 / 5280**）。
 
@@ -36,15 +36,16 @@
 | `packages/logger` | 结构化日志 + 加载 monorepo 根 `.env`（`loadMonorepoEnvFromEntry`） |
 | `packages/http-errors` | `AppError`、Express 统一错误、`helmet`、404 |
 | `packages/eslint-config`、`packages/typescript-config` | 共享工程配置 |
+| `customer-targets/<id>/` | **每目标一块**：`target.yaml`（工作区路径、Git、运维字段等），可选 **`ai-rules/`**（语义审核规则，控制台上传）；根 **`agents.config.yaml`** 中 **`target.projects`** 推荐只保留 **`id` + `definitionPath`** 指向各 `target.yaml`（启动时 **hydrate** 合并）。 |
 | `.env`（自 `.env.example`，**勿提交**） | 端口、目标路径、密钥；含 **`TASK_STORE_DRIVER`**（MVP 常用 `memory`）及预留 `DATABASE_URL` / `REDIS_URL` |
 | `e2e` | Playwright：拉起各应用 `/health` 冒烟 |
 | `agents.config.yaml` | `pipeline.fullTestCommand` / `publishCommand`、`review` 等结构化默认 |
 | `docs/FEISHU_COMMANDS.md` | 飞书话术、验证码；**第 4 节** PRD（新建、`修订+<任务ID>`、引用机器人 PRD **回复**、新开题）；**第 12 节**「状态」「清空任务」（memory） |
 | `docs/CUSTOMER_GUIDE.md` | **客户导引**；与群内 **「帮助」** 相辅相成 |
-| `docs/ARCHITECTURE.md` | **架构**：契约、附图（部署/分层/序列）、HTTP 栈、Skill 载荷等 |
+| `docs/ARCHITECTURE.md` | **架构**：契约、附图（部署 / Monorepo / **`customer-targets` 合并** / 飞书路径）、HTTP 栈、Skill 载荷 |
 | `docs/IMPLEMENTATION_ROADMAP.md` | **落地顺序**与自检清单 |
 
-持久化 AI 编码约定见 **`.cursor/rules/*.mdc`**。更细的**信任边界、配置策略、多张架构图（部署 / Monorepo / 可选 DFD）**见 **`docs/ARCHITECTURE.md`**。
+持久化 AI 编码约定见 **`.cursor/rules/*.mdc`**。更细的信任边界、配置策略与 **多张 Mermaid 附图**（含 **`customer-targets/`** 数据流）见 **`docs/ARCHITECTURE.md`**。
 
 ## 命令（根目录仅保留）
 
@@ -102,6 +103,9 @@ flowchart TB
     Core[@agents/pipeline-core]
     Cfg[@agents/agents-config]
   end
+  subgraph orch_layout [编排仓 · 配置树]
+    CT[customer-targets/\n&lt;id&gt; · YAML · ai-rules]
+  end
   Feishu --> Ngrok --> Orch
   Orch --> Req
   Orch --> Cod
@@ -126,6 +130,9 @@ flowchart TB
   Tst --> Core
   Ops --> Core
   Orch -.读配置.-> Cfg
+  Orch -.读 target 桩.-> CT
+  ConsoleAPI -.写 target · ai-rules.-> CT
+  Cfg -.definitionPath.-> CT
   ConsoleUI --> ConsoleAPI
   ConsoleAPI -.读写.-> Cfg
   ConsoleAPI -.LLM 转发.-> LLMUp[LLM · OpenAI 兼容]
@@ -141,11 +148,11 @@ flowchart TB
 | **orchestrator** | 解析意图、验证码、任务状态、调下游、回写群消息 |
 | **requirements-agent** | 需求结构化，**不**直接改业务仓库 |
 | **coding-agent** | 编码任务（与编排策略一致；演进中） |
-| **review-agent** | blocking 脚本 + 规则化 LLM 评审 |
-| **test-agent** | 在 `TARGET_WORKSPACE_PATH` 下执行配置的全量测试 |
+| **review-agent** | blocking 脚本 + 规则化 LLM 评审（多目标绑定时语义规则可读 **`customer-targets/<id>/ai-rules`**） |
+| **test-agent** | 在解析得到的客户 **`workspacePath`** 下执行配置的全量测试 |
 | **ops-agent** | 构建、发布、备份回滚、只读探测（由配置约束命令） |
 | **agent-console** | 本地配置与对话工具；**不**承担飞书鉴权与任务真相 |
 | **pipeline-core** | 跨应用共享类型、任务契约与步骤枚举 |
-| **agents-config** | YAML/env 解析与校验，供 orchestrator、review、coding、console 等复用 |
+| **agents-config** | YAML/env 解析、**`hydrateAgentsConfigTargetProjects`**、`customer-targets` 路径；供 orchestrator、review、coding、console 等复用 |
 
 **配置**：非敏感默认在 `agents.config.yaml`；**密钥、SSH、API Key** 仅在 `.env`（见 `.env.example`）。更细的信任边界与演进见 **`docs/ARCHITECTURE.md`**、落地步骤见 **`docs/IMPLEMENTATION_ROADMAP.md`**。

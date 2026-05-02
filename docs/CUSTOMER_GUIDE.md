@@ -54,4 +54,10 @@
 
 ---
 
+## 6. 多目标仓库（给管理员的一句）
+
+若部署启用了 **`agents.config.yaml` → `target.projects`**（每块 **`customer-targets/<id>/`**）：群内 **`切换目标：<id>`** 之类口令（以 **`docs/FEISHU_COMMANDS.md`** 为准）决定本轮任务落在 **哪一个客户工作区**；**语义审核用的 `.md` / `.mdc`** 可由实施方在 **agent-console** 上传到 **`customer-targets/<id>/ai-rules/`**，与 Cursor 里客户仓自带的规则目录 **不必相同**。业务同事只需按群内指引切换目标，无需记路径。
+
+---
+
 *若群内「帮助」无反应，检查是否已接入与模拟入口相同的意图解析（`help`）并将返回体中的 `feishuReplyText` 转发到群。*

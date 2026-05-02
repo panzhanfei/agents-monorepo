@@ -1,6 +1,7 @@
 pipeline:
   fullTestCommand: pnpm run test && pnpm run e2e
   publishCommand: pnpm run build
+  testGateTimeoutMs: 3600000
 review:
   activeProfile: default
   profiles:
@@ -21,11 +22,12 @@ review:
     - agents.config.yaml
     - knip.json
     - turbo.json
+    - package.json
 target:
-  source: git
-  gitRepoUrl: ""
-  defaultBranch: main
-  workspacePath: ./workspace/target-repo
+  defaultProjectId: default
+  projects:
+    - id: default
+      definitionPath: customer-targets/default/target.yaml
 feishu:
   enabled: false
   confirmBetweenPipelineSteps: false
@@ -52,7 +54,7 @@ server:
   sshHost: ""
   sshUser: ""
   sshPort: 22
-  remoteDeployPath: ""
+  remoteDeployPath: /srv/your-app
   backup:
     enabled: true
     remoteParentDir: /srv/backups/your-app

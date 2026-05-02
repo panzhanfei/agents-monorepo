@@ -1,4 +1,5 @@
 import path from 'node:path';
+import type { ServerResponse } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
@@ -26,6 +27,27 @@ export default defineConfig(({ mode }) => {
         '/api': {
           target: `http://127.0.0.1:${String(apiPort)}`,
           changeOrigin: true,
+          configure: (proxy) => {
+            proxy.on('error', (err, _req, res) => {
+              const out = res as ServerResponse;
+              if (
+                out !== undefined &&
+                typeof out.writeHead === 'function' &&
+                out.headersSent !== true
+              ) {
+                const payload = {
+                  ok: false,
+                  code: 'AGENT_CONSOLE_API_UPSTREAM_UNAVAILABLE',
+                  message: `控制台 API 未在 127.0.0.1:${String(apiPort)} 监听。请在 apps/agent-console 运行「pnpm dev」以同时启动 Express（API）与 Vite；不要只单独运行 vite。`,
+                  cause: err instanceof Error ? err.message : String(err),
+                };
+                out.writeHead(503, {
+                  'Content-Type': 'application/json; charset=utf-8',
+                });
+                out.end(`${JSON.stringify(payload)}\n`);
+              }
+            });
+          },
         },
       },
     },

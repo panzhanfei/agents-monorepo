@@ -8,6 +8,7 @@ import { runFullTestSuite } from '../services/run-test-suite.js';
 export const testRunBodySchema = z.object({
   taskId: z.string().min(1),
   workspacePath: z.string().optional(),
+  fullTestCommand: z.string().max(16_000).optional(),
   implementationRole: z.enum(['frontend', 'backend', 'fullstack']).optional(),
   stackProfile: z.string().optional(),
 });

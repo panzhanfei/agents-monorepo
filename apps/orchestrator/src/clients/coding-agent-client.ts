@@ -4,8 +4,14 @@ import type {
   ICodingRunConfigAssessment,
 } from '@agents/pipeline-core';
 
+import { resolveAgentHttpBaseUrlFromEnv } from './agent-http-base-url.js';
+
 export const getCodingAgentBaseUrl = (): string =>
-  process.env.CODING_AGENT_BASE_URL?.trim() ?? 'http://127.0.0.1:4020';
+  resolveAgentHttpBaseUrlFromEnv({
+    explicitBaseUrlEnv: process.env.CODING_AGENT_BASE_URL,
+    portEnv: process.env.CODING_AGENT_PORT,
+    portDefault: 4020,
+  });
 
 export const runCodingHttp = async (
   body: ICodingRunRequest,

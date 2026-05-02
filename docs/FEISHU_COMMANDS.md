@@ -92,7 +92,7 @@ YOURCODE
 
 ## 2.5 多目标业务仓库（`target.projects`，可选）
 
-在 `agents.config.yaml` 的 `target.projects` 中配置 **多条** `{ id, workspacePath, label? }` 时，**编码 / 审核 / 全量测试**会在当前 **任务上下文** 中绑定一个目录。**未配置该列表或不列多项时**：行为与单机 `TARGET_WORKSPACE_PATH` 一致，不受影响。
+根 **`agents.config.yaml`** 中 **`target.projects`** 可为 **多条**条目（常见：**`id` + `definitionPath`**，指向编排仓内 **`customer-targets/<id>/target.yaml`**；加载时再 **hydrate** 合并出运行时 **`workspacePath` 等**）。在此情形下，**编码 / 审核 / 全量测试**会在当前 **任务上下文** 中绑定 **某一个 `id` 对应的目录**。**未配置列表或不列多项时**：行为与单机 **`TARGET_WORKSPACE_PATH`**（及遗留解析逻辑）一致，不受影响。
 
 **解析顺序（多目标、且未在消息首行写 `目标：<id>` 时）**：本会话最近一次「切换目标」→ 环境变量 `TARGET_DEFAULT_PROJECT_ID` → `target.defaultProjectId` → （仅 **一条** `projects` 条目时自动用该条目）。若配置了 **≥2** 条目且上述均无法唯一确定目录，编排器回复歧义提示，请先绑定或写明目标。
 

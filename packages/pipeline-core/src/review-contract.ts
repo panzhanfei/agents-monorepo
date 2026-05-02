@@ -20,6 +20,12 @@ export interface IReviewRunRequest {
   readonly taskId: string;
   /** 覆盖默认 TARGET_WORKSPACE_PATH（相对路径相对于 monorepo 根解析） */
   readonly workspacePath?: string;
+  /**
+   * 与 `target.projects[].id` 一致时必须传入：审核 LLM **仅**使用编排仓
+   * `customer-targets/<customerTargetProjectId>/ai-rules/`（Agent Console 上传），
+   * 不再从客户仓 glob / 追加目录载入规则文本。
+   */
+  readonly customerTargetProjectId?: string;
   readonly implementationRole?: ImplementationRole;
   readonly stackProfile?: StackProfile;
   /** 供模型理解的变更摘要（可选） */

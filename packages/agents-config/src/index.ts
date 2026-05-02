@@ -1,10 +1,26 @@
 export {
   agentsConfigSchema,
   agentsTargetSchema,
+  CUSTOMER_TARGETS_AI_RULES_DIR_SEGMENT,
+  CUSTOMER_TARGETS_ROOT_REL,
+  CUSTOMER_TARGETS_SHARED_SEGMENT,
+  CUSTOMER_TARGETS_TARGET_DEFINITION_BASENAME,
+  DEFAULT_TARGET_PROJECT_DEFINITION_SUBPATH,
+  TARGET_PROJECT_ID_RE,
+  targetProjectDefinitionFileSchema,
   targetProjectEntrySchema,
+  targetProjectYamlRowSchema,
   type IAgentsConfig,
+  type IAgentsConfigParsed,
   type ITargetProjectEntry,
+  type ITargetProjectYamlRow,
 } from './schema.js';
+export {
+  absoluteCustomerTargetAiRulesPath,
+  relativeCustomerTargetAiRulesPath,
+  relativeCustomerTargetDefinitionPath,
+} from './customer-target-projects-layout.js';
+export { hydrateAgentsConfigTargetProjects } from './hydrate-target-projects.js';
 export {
   loadAgentsConfig,
   resolveAgentsConfigPath,
@@ -15,6 +31,7 @@ export { resolveWorkspacePath } from './resolve-workspace-path.js';
 export {
   extractLeadingTargetDirective,
   isMultiTargetAgentsConfig,
+  lookupTargetProjectById,
   normalizeTargetProjects,
   parseSelectTargetMessage,
   resolveFeishuTaskWorkspace,

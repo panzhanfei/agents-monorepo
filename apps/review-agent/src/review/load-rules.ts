@@ -17,7 +17,7 @@ export type IRuleLoaderLogger = {
 
 const isInsideWorkspace = (
   workspaceRoot: string,
-  absolutePath: string
+  absolutePath: string,
 ): boolean => {
   const root = path.resolve(workspaceRoot);
   const target = path.resolve(absolutePath);
@@ -34,6 +34,9 @@ export const loadReviewRulesBundle = async (opts: {
   aiRulesGlob: string;
   customerRulesDir: string;
   extraRelativeFiles: readonly string[];
+  monorepoRoot?: string;
+  orchestrationRuleDirs?: readonly string[];
+  workspaceRuleTreesSkipped?: boolean;
   maxChars: number;
   logger?: IRuleLoaderLogger;
 }): Promise<string> => {
@@ -50,8 +53,12 @@ export const loadReviewRulesBundle = async (opts: {
     total += segment.length;
   };
 
-  const readSafeFile = async (absPath: string, title: string): Promise<void> => {
-    if (!isInsideWorkspace(opts.workspaceRoot, absPath)) {
+  const readUnderContainedRoot = async (
+    containmentRoot: string,
+    absPath: string,
+    title: string,
+  ): Promise<void> => {
+    if (!isInsideWorkspace(containmentRoot, absPath)) {
       opts.logger?.warn('review_rules_skip_traversal', { title });
       return;
     }
@@ -66,45 +73,101 @@ export const loadReviewRulesBundle = async (opts: {
     }
   };
 
-  const aiRelPaths = await fg(opts.aiRulesGlob, {
-    cwd: opts.workspaceRoot,
-    onlyFiles: true,
-    dot: true,
-    ignore: ['**/node_modules/**'],
-  });
+  const skipWorkspaceTrees = opts.workspaceRuleTreesSkipped === true;
 
-  for (const rel of aiRelPaths.slice(0, 400)) {
-    const abs = path.resolve(opts.workspaceRoot, rel);
-    await readSafeFile(abs, rel);
+  if (!skipWorkspaceTrees) {
+    const aiRelPaths = await fg(opts.aiRulesGlob, {
+      cwd: opts.workspaceRoot,
+      onlyFiles: true,
+      dot: true,
+      ignore: ['**/node_modules/**'],
+    });
+
+    for (const rel of aiRelPaths.slice(0, 400)) {
+      const abs = path.resolve(opts.workspaceRoot, rel);
+      await readUnderContainedRoot(opts.workspaceRoot, abs, rel);
+    }
+
+    const custRoot = path.resolve(opts.workspaceRoot, opts.customerRulesDir);
+    if (isInsideWorkspace(opts.workspaceRoot, custRoot)) {
+      let custRelPaths: string[] = [];
+      try {
+        custRelPaths = await fg('**/*', {
+          cwd: custRoot,
+          onlyFiles: true,
+          dot: true,
+          ignore: ['**/node_modules/**'],
+        });
+      } catch {
+        custRelPaths = [];
+      }
+      for (const cr of custRelPaths.slice(0, 400)) {
+        const ext = path.extname(cr).toLowerCase();
+        if (ext !== '' && !TEXT_EXT.has(ext)) {
+          continue;
+        }
+        const abs = path.resolve(custRoot, cr);
+        const title = path.join(opts.customerRulesDir, cr);
+        await readUnderContainedRoot(opts.workspaceRoot, abs, title);
+      }
+    }
+
+    for (const rel of opts.extraRelativeFiles.slice(0, 80)) {
+      const abs = path.resolve(opts.workspaceRoot, rel);
+      await readUnderContainedRoot(opts.workspaceRoot, abs, rel);
+    }
   }
 
-  const custRoot = path.resolve(opts.workspaceRoot, opts.customerRulesDir);
-  if (isInsideWorkspace(opts.workspaceRoot, custRoot)) {
-    let custRelPaths: string[] = [];
-    try {
-      custRelPaths = await fg('**/*', {
-        cwd: custRoot,
-        onlyFiles: true,
-        dot: true,
-        ignore: ['**/node_modules/**'],
-      });
-    } catch {
-      custRelPaths = [];
-    }
-    for (const cr of custRelPaths.slice(0, 400)) {
-      const ext = path.extname(cr).toLowerCase();
-      if (ext !== '' && !TEXT_EXT.has(ext)) {
+  const monoRaw = opts.monorepoRoot?.trim() ?? '';
+  const orchDirs = opts.orchestrationRuleDirs ?? [];
+  if (monoRaw !== '' && orchDirs.length > 0) {
+    const monoAbs = path.resolve(monoRaw);
+    for (const dirRaw of orchDirs) {
+      const orchAbs = path.resolve(dirRaw);
+      if (!isInsideWorkspace(monoAbs, orchAbs)) {
+        opts.logger?.warn('review_rules_skip_orchestration_dir', {
+          dir: orchAbs,
+        });
         continue;
       }
-      const abs = path.resolve(custRoot, cr);
-      const title = path.join(opts.customerRulesDir, cr);
-      await readSafeFile(abs, title);
+      let dirStat;
+      try {
+        dirStat = await fs.stat(orchAbs);
+      } catch {
+        continue;
+      }
+      if (!dirStat.isDirectory()) {
+        continue;
+      }
+      const relTitlesBase = path.relative(monoAbs, orchAbs);
+      let orchRelPaths: string[] = [];
+      try {
+        orchRelPaths = await fg(`**/*`, {
+          cwd: orchAbs,
+          onlyFiles: true,
+          dot: true,
+          ignore: ['**/node_modules/**'],
+        });
+      } catch {
+        orchRelPaths = [];
+      }
+      for (const cr of orchRelPaths.slice(0, 400)) {
+        const ext = path.extname(cr).toLowerCase();
+        if (ext !== '' && !TEXT_EXT.has(ext)) {
+          continue;
+        }
+        const abs = path.resolve(orchAbs, cr);
+        const titleParts = [
+          relTitlesBase.split(path.sep).join('/'),
+          cr.split(path.sep).join('/'),
+        ].filter((s) => s !== '');
+        const title =
+          titleParts.length === 2
+            ? `${titleParts[0]}/${titleParts[1]}`
+            : titleParts[0] ?? cr;
+        await readUnderContainedRoot(monoAbs, abs, title);
+      }
     }
-  }
-
-  for (const rel of opts.extraRelativeFiles.slice(0, 80)) {
-    const abs = path.resolve(opts.workspaceRoot, rel);
-    await readSafeFile(abs, rel);
   }
 
   return chunks.join('\n').trim();

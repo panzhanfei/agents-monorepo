@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import YAML from 'yaml';
+import { hydrateAgentsConfigTargetProjects } from './hydrate-target-projects.js';
 import { agentsConfigSchema, type IAgentsConfig } from './schema.js';
 
 export type ILoadAgentsConfigOptions = {
@@ -36,7 +37,7 @@ export const loadAgentsConfig = async (
   if (!result.success) {
     throw new Error(`agents.config.yaml 结构校验失败：${result.error.message}`);
   }
-  return result.data;
+  return hydrateAgentsConfigTargetProjects(opts.monorepoRoot, result.data);
 };
 
 export type { IAgentsConfig };

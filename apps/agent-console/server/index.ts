@@ -4,10 +4,16 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   agentsConfigSchema,
+  CUSTOMER_TARGETS_ROOT_REL,
+  loadAgentsConfig,
+  relativeCustomerTargetDefinitionPath,
   resolveAgentsConfigPath,
-  type IAgentsConfig,
+  targetProjectEntrySchema,
+  type IAgentsConfigParsed,
 } from '@agents/agents-config';
 import { loadMonorepoEnvFromEntry } from '@agents/logger';
+import { registerConsoleEnvRoutes } from './console-env.js';
+import { registerTargetAiRulesRoutes } from './target-ai-rules-routes.js';
 import express from 'express';
 import YAML from 'yaml';
 import { z, type ZodIssue } from 'zod';
@@ -27,7 +33,6 @@ const deriveMonorepoRootFromEntry = (): string => {
     return path.resolve(dir, '..', '..', '..');
   }
 
-  /** apps/agent-console/server → 往上三级仓库根 */
   return path.resolve(dir, '..', '..', '..');
 };
 
@@ -57,7 +62,7 @@ const pipelineInvokeBodySchema = z
 export const validateAgentsYamlRaw = (
   yamlText: string
 ):
-  | { ok: true; data: IAgentsConfig }
+  | { ok: true; data: IAgentsConfigParsed }
   | { ok: false; errors: readonly string[] } => {
   let parsedUnknown: unknown;
   try {
@@ -105,27 +110,43 @@ const writeValidatedAgentsYaml = async (
   return { backupPath };
 };
 
+const TARGET_DEFINITION_OPTIONAL_KEYS = [
+  'label',
+  'gitRepoUrl',
+  'defaultBranch',
+  'packBuildOutputDir',
+  'deployRemotePath',
+  'deploySshHost',
+  'deploySshUser',
+  'deploySshPort',
+  'probeListenPorts',
+  'publishCommand',
+  'fullTestCommand',
+] as const;
+
+const targetDefinitionDocFromEntry = (
+  p: z.infer<typeof targetProjectEntrySchema>,
+): Record<string, unknown> => {
+  const doc: Record<string, unknown> = {
+    id: p.id,
+    workspacePath: p.workspacePath.trim(),
+  };
+  for (const k of TARGET_DEFINITION_OPTIONAL_KEYS) {
+    const v = p[k];
+    if (typeof v === 'string' && v.trim() !== '') {
+      doc[k] = v.trim();
+    }
+  }
+  return doc;
+};
+
 const targetProjectsPutSchema = z
   .object({
     defaultProjectId: z.string().min(1).optional(),
     defaultBranch: z.string().optional(),
-    source: z.enum(['git', 'local']).optional(),
     workspacePath: z.string().optional(),
     gitRepoUrl: z.string().optional(),
-    projects: z
-      .array(
-        z
-          .object({
-            id: z
-              .string()
-              .min(1)
-              .regex(/^[a-zA-Z0-9][-a-zA-Z0-9_]*$/),
-            workspacePath: z.string().min(1),
-            label: z.string().optional(),
-          })
-          .strict()
-      )
-      .min(1),
+    projects: z.array(targetProjectEntrySchema).min(1),
   })
   .strict();
 
@@ -158,6 +179,8 @@ export const createApp = (): express.Express => {
   };
 
   app.use('/api', authGuard);
+
+  registerTargetAiRulesRoutes({ app, monorepoRoot });
 
   app.get(['/health', '/api/health'], (_req, res) => {
     res.json({ ok: true, service: 'agent-console-api' });
@@ -252,11 +275,42 @@ export const createApp = (): express.Express => {
       const yamlPath = resolveAgentsConfigPath(monorepoRoot);
       const raw = await fs.readFile(yamlPath, 'utf8');
       const parsed = YAML.parse(raw);
+      let parsedHydrated: unknown | undefined;
+      try {
+        const hydrated = await loadAgentsConfig({ monorepoRoot });
+        const tRaw =
+          parsed !== null &&
+          typeof parsed === 'object' &&
+          !Array.isArray(parsed) &&
+          (parsed as Record<string, unknown>).target !== undefined &&
+          typeof (parsed as Record<string, unknown>).target === 'object' &&
+          (parsed as Record<string, unknown>).target !== null
+            ? ({
+                ...(parsed as Record<string, unknown>).target as Record<
+                  string,
+                  unknown
+                >
+              })
+            : undefined;
+        parsedHydrated =
+          tRaw !== undefined
+            ? {
+                ...parsed,
+                target: {
+                  ...tRaw,
+                  projects: hydrated.target?.projects,
+                },
+              }
+            : parsed;
+      } catch {
+        parsedHydrated = undefined;
+      }
       res.json({
         ok: true,
         yamlPath,
         yamlRaw: raw,
         parsedUnknown: parsed,
+        parsedHydrated,
       });
     } catch (e) {
       next(e);
@@ -325,12 +379,39 @@ export const createApp = (): express.Express => {
       const doc = docUnknown as Record<string, unknown>;
       const prevTarget = doc.target as Record<string, unknown> | undefined;
 
+      const customerTargetsRoot = path.join(
+        monorepoRoot,
+        ...CUSTOMER_TARGETS_ROOT_REL.split('/').filter(Boolean),
+      );
+
+      for (const proj of parsed.data.projects) {
+        const projDir = path.join(customerTargetsRoot, proj.id.trim());
+        await fs.mkdir(projDir, { recursive: true });
+
+        const absDef = path.join(
+          projDir,
+          'target.yaml',
+        );
+        const defDoc = targetDefinitionDocFromEntry(proj);
+        await fs.writeFile(
+          absDef,
+          `${YAML.stringify(defDoc, {
+            indent: 2,
+            lineWidth: 0,
+          })}\n`,
+          'utf8',
+        );
+      }
+
+      const stubProjects = parsed.data.projects.map((proj) => ({
+        id: proj.id,
+        definitionPath: relativeCustomerTargetDefinitionPath(proj.id),
+      }));
+
       const nextTarget: Record<string, unknown> = {
         ...(prevTarget ?? {}),
       };
 
-      if (parsed.data.source !== undefined)
-        nextTarget.source = parsed.data.source;
       if (parsed.data.workspacePath !== undefined)
         nextTarget.workspacePath = parsed.data.workspacePath;
       if (parsed.data.gitRepoUrl !== undefined)
@@ -339,7 +420,7 @@ export const createApp = (): express.Express => {
         nextTarget.defaultBranch = parsed.data.defaultBranch;
       if (parsed.data.defaultProjectId !== undefined)
         nextTarget.defaultProjectId = parsed.data.defaultProjectId;
-      nextTarget.projects = parsed.data.projects;
+      nextTarget.projects = stubProjects;
 
       const nextDoc = { ...doc, target: nextTarget };
       const valid = agentsConfigSchema.safeParse(nextDoc);
@@ -533,6 +614,8 @@ export const createApp = (): express.Express => {
       next(e);
     }
   });
+
+  registerConsoleEnvRoutes({ app, monorepoRoot });
 
   const clientDist = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),

@@ -1,26 +1,62 @@
-import type { Group } from 'three';
+import type { Group, Mesh } from 'three';
 import type { JSX } from 'react';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Float, MeshDistortMaterial, Sphere, Stars } from '@react-three/drei';
 
 import { ThoughtBackdropErrorBoundary } from '~/components/ThoughtBackdropErrorBoundary';
+import { useThoughtBackdropLinkedOptional } from '~/components/thought-backdrop-drive';
 import { isBrowserWebGlLikelySupported } from '~/lib/webgl-capability';
+
+type IMeshDistortLike = {
+  distort: number;
+  speed: number;
+};
 
 const ThoughtCoreInner = (): JSX.Element => {
   const meshWire = useRef<Group>(null);
+  const distortMeshRef = useRef<Mesh>(null);
+  const linkedTarget = useThoughtBackdropLinkedOptional();
+  const blendRef = useRef(0);
+
   useFrame((_s, dt) => {
+    const tgt = linkedTarget ? 1 : 0;
+    blendRef.current += (tgt - blendRef.current) * (1 - Math.exp(-dt * 5.2));
+    const b = blendRef.current;
+
     if (meshWire.current !== null) {
-      meshWire.current.rotation.y += dt * 0.35;
+      const spin = 0.35 + b * 1.05;
+      meshWire.current.rotation.y += dt * spin;
       const t = performance.now() / 1000;
-      meshWire.current.rotation.x = Math.sin(t * 0.9) * 0.42;
-      meshWire.current.rotation.z = Math.cos(t * 0.55) * 0.08;
+      meshWire.current.rotation.x =
+        Math.sin(t * (0.9 + b * 1.6)) * (0.42 + b * 0.28);
+      meshWire.current.rotation.z =
+        Math.cos(t * (0.55 + b * 1.1)) * (0.08 + b * 0.12);
+      const pulse = 1 + b * (0.07 + Math.sin(t * 3.4) * 0.035);
+      meshWire.current.scale.setScalar(pulse);
+    }
+
+    const dm = distortMeshRef.current?.material;
+    if (
+      dm !== null &&
+      dm !== undefined &&
+      typeof dm === 'object' &&
+      'distort' in dm &&
+      'speed' in dm
+    ) {
+      const shaderMat = dm as IMeshDistortLike;
+      shaderMat.distort = 0.42 + b * 0.42;
+      shaderMat.speed = 2.4 + b * 2.6;
     }
   });
 
   return (
     <>
-      <Float speed={1.6} rotationIntensity={2.5} floatIntensity={2}>
+      <Float
+        speed={1.6}
+        rotationIntensity={2.5}
+        floatIntensity={2}
+      >
         <group ref={meshWire}>
           <mesh>
             <icosahedronGeometry args={[2.2, 1]} />
@@ -34,7 +70,7 @@ const ThoughtCoreInner = (): JSX.Element => {
               emissiveIntensity={0.85}
             />
           </mesh>
-          <mesh scale={1.12}>
+          <mesh ref={distortMeshRef} scale={1.12}>
             <icosahedronGeometry args={[2.28, 0]} />
             <MeshDistortMaterial
               distort={0.42}

@@ -3,7 +3,6 @@ import { useCallback } from 'react';
 
 import { queryKeys } from '~/api/query-keys';
 
-/** 在完成写盘等操作后失效编排配置缓存 */
 export const useInvalidateConsoleConfig = (): {
   invalidate: () => Promise<void>;
 } => {
@@ -11,6 +10,9 @@ export const useInvalidateConsoleConfig = (): {
 
   const invalidate = useCallback(async () => {
     await qc.invalidateQueries({ queryKey: queryKeys.config() });
+    await qc.invalidateQueries({
+      queryKey: [...queryKeys.root, 'target-ai-rules'],
+    });
   }, [qc]);
 
   return { invalidate };

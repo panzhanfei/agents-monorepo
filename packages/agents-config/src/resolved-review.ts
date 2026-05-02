@@ -28,9 +28,7 @@ export const resolveReviewExecutionConfig = (
       ? [blockingFromEnv]
       : [...profile.blockingCommands];
 
-  const globEnv = env.REVIEW_AIRULES_GLOB?.trim();
-  const aiRulesGlob =
-    globEnv !== undefined && globEnv !== '' ? globEnv : profile.aiRulesGlob;
+  const aiRulesGlob = profile.aiRulesGlob;
 
   const custEnv = env.REVIEW_CUSTOM_RULES_DIR?.trim();
   const customerRulesDir =

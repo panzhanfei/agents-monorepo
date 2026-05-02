@@ -4,6 +4,7 @@ import type { ILogger } from '@agents/logger';
 import {
   evaluateCodingWorkspaceConfigAsync,
   resolveWorkspacePath,
+  TARGET_PROJECT_ID_RE,
   type ICodingWorkspaceConfigReport,
 } from '@agents/agents-config';
 import type {
@@ -18,6 +19,7 @@ const codingRunBodySchema = z.object({
   taskId: z.string().min(1),
   instruction: z.string().min(1).max(maxInstructionChars),
   workspacePath: z.string().optional(),
+  customerTargetProjectId: z.string().regex(TARGET_PROJECT_ID_RE).optional(),
 });
 
 const mapReportToAssessment = (
@@ -27,6 +29,10 @@ const mapReportToAssessment = (
   blockingIssues: report.blockingIssues,
   reviewProfileUsed: report.reviewProfileUsed,
   aiRulesGlobUsed: report.aiRulesGlobEffective,
+  workspaceAiRuleFilesMatchedCount:
+    report.workspaceAiRuleFilesMatchedCount,
+  orchestrationAiRuleFilesMatchedCount:
+    report.orchestrationAiRuleFilesMatchedCount,
   aiRuleFilesMatchedCount: report.aiRuleFilesMatchedCount,
   suggestCustomerConfirmWithoutMatchedAiRules:
     report.suggestCustomerConfirmWithoutMatchedAiRules,
@@ -37,9 +43,9 @@ const buildConfigMarkdown = (assessment: ICodingRunConfigAssessment): string => 
     '### 编码前 · 配置自检',
     '',
     `- **客户工作区**：\`${assessment.workspacePathResolved}\``,
-    `- **审核同源 profile**：${assessment.reviewProfileUsed !== '' ? `\`${assessment.reviewProfileUsed}\`` : '（YAML 校验失败或未解析）'}`,
-    `- **AI 规则 glob**（与客户仓 \`agents.config.yaml\` profile + 环境变量 \`REVIEW_AIRULES_GLOB\` 一致）：\`${assessment.aiRulesGlobUsed}\``,
-    `- **匹配到的规则文件数**：${String(assessment.aiRuleFilesMatchedCount)}`,
+    `- **审核 profile（门禁同源）**：${assessment.reviewProfileUsed !== '' ? `\`${assessment.reviewProfileUsed}\`` : '（YAML 校验失败或未解析）'}`,
+    `- **编排规则（仅 Agent Console 上传）**：${assessment.aiRulesGlobUsed}`,
+    `- **已上传规则文件数**：${String(assessment.orchestrationAiRuleFilesMatchedCount)}`,
     '',
   ];
 
@@ -58,7 +64,7 @@ const buildConfigMarkdown = (assessment: ICodingRunConfigAssessment): string => 
     lines.push(
       '**可选但强烈建议：**',
       '- 与客户仓 **同源**门禁命令（参见 `agents.config.yaml` → `review.profiles.*.blockingCommands`，由 **review-agent** 执行）；',
-      '- `.env` 中 \`CODING_AGENT_BASE_URL\` / \`CODING_AGENT_INTERNAL_TOKEN\` 与编排器对齐（已由编排器侧自检时提示）。',
+      '- 编排 outbound：\`CODING_AGENT_INTERNAL_TOKEN\` 需与编排器一致（若启用 Bearer）；不写 \`CODING_AGENT_BASE_URL\` 时由编排器按端口自动拼本地地址（自检提示同）。',
       ''
     );
 
@@ -66,9 +72,8 @@ const buildConfigMarkdown = (assessment: ICodingRunConfigAssessment): string => 
       lines.push(
         '#### 需在飞书里请客户口头确认的一步',
         '',
-        '在当前工作区 **未匹配到任何 AI 规则文件**（见上 glob）。产品上建议 **先发飞书让客户确认**：',
-        '- 是否接受在 **暂不配置 Cursor 仓库规则（如 `.cursor/rules/**/*.mdc`）** 的情况下继续由自动化编码（风格与护栏较弱）；',
-        '- 或直接让对方在客户项目里补上规则后再跑。',
+        '在 **Agent Console · 编排审核规则** 中，`customer-targets/<目标 id>/ai-rules/` 下 **尚无已上传的规则文件**。建议先在控制台上传 `.mdc` / `.md` 再继续全自动编码。',
+        '- 或由产品在飞书里与客户确认暂缓规则。',
         '',
         '> 本条 **不阻断** 当前占位版 coding-agent（不自动改仓库）；后续接入真实改代码时需结合编排器门禁或状态机收口。',
         ''
@@ -139,6 +144,13 @@ export const createCodingRunHandler = (
       const workspaceReport = await evaluateCodingWorkspaceConfigAsync({
         monorepoRoot,
         workspaceAbsolute: workspace,
+        ...(parsed.data.customerTargetProjectId !== undefined &&
+        parsed.data.customerTargetProjectId.trim() !== ''
+          ? {
+              customerTargetProjectId:
+                parsed.data.customerTargetProjectId.trim(),
+            }
+          : {}),
       });
       const configAssessment = mapReportToAssessment(workspaceReport);
 
