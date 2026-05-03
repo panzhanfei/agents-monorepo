@@ -207,8 +207,18 @@ const troubleshootingSuffix = (code: number): string => {
   if (code === 99_991_673) {
     return ' (提示: 多为应用未安装到租户/可用范围不含会话/权限未发布生效，或 FEISHU_OPEN_API_BASE 与国际版域名不一致；非 token 刷新问题)';
   }
+  if (code === 230001) {
+    return ' (提示: receive_id 非法——多见于把控制台占位 channelId、UUID、用户名等当作开放平台 chat_id；IM 群 chat_id 多为 oc_ 前缀)';
+  }
   return '';
 };
+
+/**
+ * IM `receive_id_type=chat_id` 仅接受开放平台返回的会话 chat_id（群多为 `oc_` 前缀）。
+ * Agent Console 等使用的 `agent-console`、任务 UUID 等占位符不得发给 IM API（否则会 230001 invalid receive_id）。
+ */
+export const isLikelyFeishuOpenPlatformChatId = (chatId: string): boolean =>
+  /^oc_[a-zA-Z0-9_-]+$/.test(chatId.trim());
 
 /**
  * 优先对「用户这条消息」reply，失败再按 chat_id 直发（与 release-bot 一致，部分租户下 reply 路径更可用）。
@@ -229,6 +239,34 @@ export const sendFeishuOutboundText = async (deps: {
       return { kind: 'skipped' };
     }
 
+    const inboundTrimmed =
+      deps.inboundMessageId !== undefined ? deps.inboundMessageId.trim() : '';
+    const chatTrimmed =
+      deps.chatId !== undefined ? deps.chatId.trim() : '';
+
+    const chatEligibleForImCreate =
+      chatTrimmed !== '' && isLikelyFeishuOpenPlatformChatId(chatTrimmed);
+
+    /** 无 reply 路径且 channelId 非开放平台 chat_id（如 Console 固定 agent-console）时不请求 token / IM */
+    if (
+      inboundTrimmed === '' &&
+      chatTrimmed !== '' &&
+      !chatEligibleForImCreate
+    ) {
+      deps.logger.info('feishu_im_skipped', {
+        reason: 'synthetic_or_invalid_chat_id',
+        chatIdTail: chatTrimmed.slice(-24),
+      });
+      return { kind: 'skipped' };
+    }
+
+    if (inboundTrimmed === '' && chatTrimmed === '') {
+      return {
+        kind: 'error',
+        message: 'missing_chat_id_and_inbound_message_id',
+      };
+    }
+
     const text =
       deps.text.length > 18_000
         ? `${deps.text.slice(0, 18_000)}\n\n…（内容过长，已截断）`
@@ -240,19 +278,16 @@ export const sendFeishuOutboundText = async (deps: {
     }
 
     let replyErr = '';
-    if (
-      deps.inboundMessageId !== undefined &&
-      deps.inboundMessageId.length > 0
-    ) {
+    if (inboundTrimmed !== '') {
       const replyResult = await postImMessageReply(
         token,
-        deps.inboundMessageId,
+        inboundTrimmed,
         text
       );
       if (replyResult.kind === 'ok') {
         deps.logger.info('feishu_im_message_sent', {
           mode: 'reply',
-          inboundSuffix: deps.inboundMessageId.slice(-8),
+          inboundSuffix: inboundTrimmed.slice(-8),
           messageId: replyResult.messageId ?? null,
         });
         return replyResult;
@@ -264,12 +299,24 @@ export const sendFeishuOutboundText = async (deps: {
       });
     }
 
-    if (deps.chatId !== undefined && deps.chatId.length > 0) {
-      const sendResult = await postImMessageCreate(token, deps.chatId, text);
+    if (chatTrimmed !== '') {
+      if (!chatEligibleForImCreate) {
+        deps.logger.info('feishu_im_chat_fallback_skipped', {
+          reason: 'invalid_chat_id_for_im',
+        });
+        return {
+          kind: 'error',
+          message:
+            replyErr !== ''
+              ? `${replyErr}; chat_fallback_skipped_invalid_chat_id`
+              : 'chat_fallback_skipped_invalid_chat_id',
+        };
+      }
+      const sendResult = await postImMessageCreate(token, chatTrimmed, text);
       if (sendResult.kind === 'ok') {
         deps.logger.info('feishu_im_message_sent', {
           mode: 'chat_id',
-          chatIdSuffix: deps.chatId.slice(-8),
+          chatIdSuffix: chatTrimmed.slice(-8),
           messageId: sendResult.messageId ?? null,
         });
         return sendResult;

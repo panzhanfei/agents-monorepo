@@ -145,6 +145,8 @@ YOURCODE
 编码：给 orchestrator 的 /health 增加版本号字段 version，取自 package.json。
 ```
 
+空目录或既有仓库：**不设内置固定脚手架模板**；若本机已配置 **`LLM_BASE_URL` + `LLM_MODEL`** 且未用 **`CODING_STACK_LLM=0`** 关闭，coding-agent 会让模型根据本条正文（及合并进来的 PRD）生成带路径的 Markdown 代码围栏并写入工作区；也可在消息里直接粘贴带路径的代码块。未配置 LLM 且无手填围栏时，通常仅写入 `docs/agents-coding/<task>-REQUIREMENT.md`。
+
 ---
 
 ## 4. 产品需求分析（结构化需求 / PRD）

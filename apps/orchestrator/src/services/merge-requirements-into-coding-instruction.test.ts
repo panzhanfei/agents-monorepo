@@ -51,4 +51,74 @@ describe('mergeRequirementsMarkdownIntoCodingInstruction', () => {
     });
     expect(merged).toContain('Next.js 个人站');
   });
+
+  it('falls back to latest completed PRD for same channel when body has no task UUID', async () => {
+    const store = new MemoryTaskStore();
+    const req = await store.createTask({
+      action: 'requirements_analysis',
+      message: '需求分析：…',
+      metadata: {
+        channelId: 'ch_demo',
+        requirementsMarkdown: '## PRD\n\n采用 **Next.js** 静态导出。',
+      },
+    });
+    await store.updateTask(req.taskId, { status: 'completed' });
+
+    const merged = await mergeRequirementsMarkdownIntoCodingInstruction({
+      instructionBody: '编码：根据引用需求开始编码',
+      taskStore: store,
+      channelId: 'ch_demo',
+    });
+    expect(merged).toContain('编码：根据引用需求开始编码');
+    expect(merged).toContain('Next.js');
+    expect(merged).toContain('## 关联需求文档（PRD）');
+  });
+
+  it('falls back by customerTargetProjectId when channel not passed', async () => {
+    const store = new MemoryTaskStore();
+    const req = await store.createTask({
+      action: 'requirements_analysis',
+      message: 'x',
+      metadata: {
+        targetProjectId: 'default',
+        requirementsMarkdown: '# Doc\n\nNext.js + SEO。',
+      },
+    });
+    await store.updateTask(req.taskId, { status: 'completed' });
+
+    const merged = await mergeRequirementsMarkdownIntoCodingInstruction({
+      instructionBody: '编码：开工',
+      taskStore: store,
+      customerTargetProjectId: 'default',
+    });
+    expect(merged).toContain('Next.js + SEO');
+  });
+
+  it('channel fallback prefers most recently updated requirements task', async () => {
+    const store = new MemoryTaskStore();
+    const older = await store.createTask({
+      action: 'requirements_analysis',
+      metadata: {
+        channelId: 'ch_x',
+        requirementsMarkdown: 'OLDER',
+      },
+    });
+    await store.updateTask(older.taskId, { status: 'completed' });
+    const newer = await store.createTask({
+      action: 'requirements_analysis',
+      metadata: {
+        channelId: 'ch_x',
+        requirementsMarkdown: 'NEWER',
+      },
+    });
+    await store.updateTask(newer.taskId, { status: 'completed' });
+
+    const merged = await mergeRequirementsMarkdownIntoCodingInstruction({
+      instructionBody: '编码：start',
+      taskStore: store,
+      channelId: 'ch_x',
+    });
+    expect(merged.includes('NEWER')).toBe(true);
+    expect(merged.includes('OLDER')).toBe(false);
+  });
 });

@@ -1,13 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import type { ICodingStackChoice } from '@agents/pipeline-core';
-
 import { extractCodeFenceFiles } from './code-fence-extract.js';
+import { trySynthesizeFilesFromInstruction } from './coding-llm-implementation.js';
 import { ensureParentDir, resolvePathUnderWorkspace } from './path-under-workspace.js';
-import { CODING_STACK_LABELS, isCodingScaffoldStackId } from './coding-scaffold-ids.js';
-import { getScaffoldPieces } from './coding-scaffold-templates.js';
-import { resolveCodingStack } from './coding-stack-resolve.js';
 
 const PROJECT_ROOT_MARKERS = [
   'package.json',
@@ -41,19 +37,10 @@ export type ICodingWorkspaceApplyResult = {
   readonly scaffoldApplied: boolean;
   readonly applyWarnings: string[];
   readonly applySummaryLines: string[];
-  readonly stackChoice?: ICodingStackChoice;
 };
 
 const hasProjectManifest = (root: string): boolean =>
   PROJECT_ROOT_MARKERS.some((name) => fs.existsSync(path.join(root, name)));
-
-const npmPackageNameSafe = (dirBasename: string): string => {
-  const s = dirBasename
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return s !== '' ? s.slice(0, 214) : 'customer-project';
-};
 
 const safeTaskSegment = (taskId: string): string =>
   taskId.replace(/[^a-zA-Z0-9._-]+/g, '_');
@@ -93,7 +80,7 @@ const buildRequirementDocBody = (
     '',
     '---',
     '',
-    '可在需求中写明技术栈（Next / Vue / React / Nuxt / Express 等），或由本机已配置的 `LLM_BASE_URL` + `LLM_MODEL` 自动选型；也可使用带路径的 Markdown 代码围栏落盘，例如：',
+    '实现方式：由本机已配置的 `LLM_BASE_URL` + `LLM_MODEL`（未关闭 `CODING_STACK_LLM` 时）根据上文生成带路径的 Markdown 代码围栏并写入工作区；也可在消息中直接使用带路径的围栏，例如：',
     '',
     '```tsx file=app/components/Example.tsx',
     'export const Example = () => <span />;',
@@ -104,7 +91,8 @@ const buildRequirementDocBody = (
   ].join('\n');
 
 /**
- * 配置自检通过后：按**需求+可选 LLM** 选型脚手架、合并需求落盘、解析围栏写入。
+ * 写入合并需求文档；解析消息内手填围栏；若无则调用 LLM 按正文生成围栏并落盘。
+ * 不再内置固定脚手架模板或栈别启发式——新建工程亦由模型输出文件清单。
  */
 export const applyCodingWorkspace = async (
   opts: ICodingWorkspaceApplyOptions
@@ -132,93 +120,56 @@ export const applyCodingWorkspace = async (
   };
 
   const manifest = hasProjectManifest(root);
-  let scaffoldApplied = false;
-  let stackChoice: ICodingStackChoice | undefined;
+
+  /** `existing` 只校验「目录已存在」，与「是否已有工程清单」无关。 */
+  const lifecycleExistingWithoutManifest =
+    !manifest && opts.workspaceLifecycleApplied === 'existing';
 
   const reqRel = `docs/agents-coding/${safeTaskSegment(opts.taskId)}-REQUIREMENT.md`;
+  await tryWrite(reqRel, buildRequirementDocBody(opts.taskId, opts.instruction), false);
 
-  if (!manifest) {
-    const resolution = await resolveCodingStack(opts.instruction);
-    stackChoice = {
-      source: resolution.source,
-      ...(resolution.stackId !== undefined ? { stackId: resolution.stackId } : {}),
-      ...(resolution.rationale !== undefined && resolution.rationale !== ''
-        ? { rationale: resolution.rationale }
-        : {}),
-      ...(resolution.llmNote !== undefined && resolution.llmNote !== ''
-        ? { llmNote: resolution.llmNote }
-        : {}),
-    };
-
-    const pkgName = npmPackageNameSafe(path.basename(root));
-    const pieces =
-      resolution.stackId !== undefined
-        ? getScaffoldPieces(resolution.stackId, {
-            taskId: opts.taskId,
-            name: pkgName,
-          })
-        : [];
-
-    scaffoldApplied = resolution.stackId !== undefined;
-
-    for (const p of pieces) {
-      await tryWrite(p.rel, p.content, p.skipIfExists);
+  const manualFences = extractCodeFenceFiles(opts.instruction);
+  let synthesizedNote: string | undefined;
+  let fences = manualFences;
+  if (manualFences.length === 0) {
+    const syn = await trySynthesizeFilesFromInstruction(opts.instruction);
+    fences = syn.fences;
+    synthesizedNote = syn.llmNote;
+    if (fences.length === 0 && synthesizedNote !== undefined) {
+      applyWarnings.push(synthesizedNote);
     }
-
-    await tryWrite(
-      reqRel,
-      buildRequirementDocBody(opts.taskId, opts.instruction),
-      false
-    );
-  } else {
-    await tryWrite(
-      reqRel,
-      buildRequirementDocBody(opts.taskId, opts.instruction),
-      false
-    );
   }
-
-  const fences = extractCodeFenceFiles(opts.instruction);
   for (const f of fences) {
     await tryWrite(f.relPosixPath, f.content, false);
   }
 
   const filesWrittenRelative = [...written].sort();
 
-  const stackLine =
-    stackChoice !== undefined
+  const lifecycleHintLines: string[] =
+    lifecycleExistingWithoutManifest
       ? [
-          `- **技术栈选型**：${stackChoice.source}${
-            stackChoice.stackId !== undefined &&
-            isCodingScaffoldStackId(stackChoice.stackId)
-              ? ` · \`${stackChoice.stackId}\`（${CODING_STACK_LABELS[stackChoice.stackId]}）`
-              : stackChoice.stackId !== undefined
-                ? ` · \`${stackChoice.stackId}\``
-                : ''
-          }`,
-          stackChoice.rationale !== undefined && stackChoice.rationale !== ''
-            ? `  - ${stackChoice.rationale}`
-            : '',
-          stackChoice.llmNote !== undefined && stackChoice.llmNote !== ''
-            ? `  - LLM：${stackChoice.llmNote}`
-            : '',
+          '> **工作区说明**：策略 **existing** 表示「客户路径须事先存在」，**不**表示「已是完整工程」。当前目录未检测到常见清单文件时，仍只会写入需求文档并由 LLM/手填围栏生成文件。',
+          '> 若要在**既有仓库**内迭代，请将 `workspacePath` 指向该仓库根。',
+          '',
         ]
-          .filter((l) => l !== '')
-          .join('\n')
-      : '';
+      : [];
+
+  const hadManifestBefore = manifest;
+  const manifestAfter = hasProjectManifest(root);
 
   const applySummaryLines: string[] = [
     '### 编码写入',
     '',
+    ...lifecycleHintLines,
     `- **工作区策略**：${opts.workspaceLifecycleApplied}`,
-    ...(stackLine !== '' ? [stackLine, ''] : []),
-    `- **新项目脚手架**：${
-      scaffoldApplied
-        ? '是（按选型落地模板；需本地 `npm install` / `pnpm install`）'
-        : manifest
-          ? '否（已有工程清单）'
-          : '否（未识别技术栈且无可用 LLM 时仅需求文档；请补关键词或配置 LLM）'
-    }`,
+    `- **内置模板脚手架**：否（新建或改动均由 LLM 按正文推断并输出围栏，或由消息内手填围栏）`,
+    `- **检测到工程清单**：${hadManifestBefore ? '写入前已有' : manifestAfter ? '写入后出现' : '仍无'}`,
+    ...(manualFences.length === 0 && fences.length > 0
+      ? [
+          `- **LLM 生成围栏**：已落盘 \`${String(fences.length)}\` 个文件`,
+          '',
+        ]
+      : []),
     `- **写入文件数**：${String(filesWrittenRelative.length)}`,
     ...(filesWrittenRelative.length > 0
       ? [
@@ -228,7 +179,7 @@ export const applyCodingWorkspace = async (
         ]
       : [
           '',
-          '（本次无新文件 — 可补充技术栈关键词或 `LLM_MODEL`，或使用带路径的 Markdown 代码块）',
+          '（本次除需求文档外无新文件 — 请配置 `LLM_BASE_URL` + `LLM_MODEL` 或在消息中附带带路径的代码块）',
         ]),
     ...(applyWarnings.length > 0
       ? ['', '**写入告警：**', ...applyWarnings.map((w) => `- ${w}`)]
@@ -238,9 +189,8 @@ export const applyCodingWorkspace = async (
 
   return {
     filesWrittenRelative,
-    scaffoldApplied,
+    scaffoldApplied: false,
     applyWarnings,
     applySummaryLines,
-    ...(stackChoice !== undefined ? { stackChoice } : {}),
   };
 };

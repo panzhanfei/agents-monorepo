@@ -1,5 +1,7 @@
+import { AGENTS_PIPELINE_INBOUND_KIND_META_KEY } from '@agents/pipeline-core';
 import { describe, expect, it } from 'vitest';
 import {
+  appendConsoleTextFilesToRequirementsMarkdown,
   mergeConsoleTextFilesIntoRawRequirement,
   parseConsoleRequirementsAttachments,
   stripConsoleRequirementsAttachmentsFromMetadata,
@@ -35,5 +37,32 @@ describe('console-requirements-attachments', () => {
     });
     expect(next.foo).toBe(1);
     expect(next.consoleRequirementsAttachments).toBeUndefined();
+  });
+
+  it('strips inbound kind routing key', () => {
+    const next = stripConsoleRequirementsAttachmentsFromMetadata({
+      foo: 2,
+      [AGENTS_PIPELINE_INBOUND_KIND_META_KEY]: 'agent_console',
+    });
+    expect(next.foo).toBe(2);
+    expect(next[AGENTS_PIPELINE_INBOUND_KIND_META_KEY]).toBeUndefined();
+  });
+
+  it('appends text file bodies after PRD for coding merge', () => {
+    const out = appendConsoleTextFilesToRequirementsMarkdown('## PRD\n\nHello', [
+      { name: 'a.txt', content: '电话：123' },
+    ]);
+    expect(out).toContain('## PRD');
+    expect(out).toContain('附件原文');
+    expect(out).toContain('电话：123');
+  });
+
+  it('strips console-only routing key', () => {
+    const next = stripConsoleRequirementsAttachmentsFromMetadata({
+      consoleTargetProjectId: 'app-a',
+      consolePrdReplyAnchorId: 'x',
+    });
+    expect(next.consoleTargetProjectId).toBeUndefined();
+    expect(next.consolePrdReplyAnchorId).toBe('x');
   });
 });

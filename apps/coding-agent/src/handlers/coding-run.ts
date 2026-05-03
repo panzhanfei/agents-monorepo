@@ -239,8 +239,6 @@ export const createCodingRunHandler = (
           ? {
               scaffoldApplied: applyResult.scaffoldApplied,
               filesWrittenCount: applyResult.filesWrittenRelative.length,
-              stackChoiceSource: applyResult.stackChoice?.source,
-              stackId: applyResult.stackChoice?.stackId,
             }
           : {}),
       });
@@ -253,14 +251,11 @@ export const createCodingRunHandler = (
         configAssessment,
         ...(accepted
           ? {
-              note: 'workspace write: requirement doc + optional scaffold + fenced files',
+              note: 'workspace write: requirement doc + LLM-synthesized or hand-authored fenced files',
               ...(applyResult !== undefined
                 ? {
                     filesWritten: applyResult.filesWrittenRelative,
                     scaffoldApplied: applyResult.scaffoldApplied,
-                    ...(applyResult.stackChoice !== undefined
-                      ? { stackChoice: applyResult.stackChoice }
-                      : {}),
                     ...(applyResult.applyWarnings.length > 0
                       ? { applyWarnings: applyResult.applyWarnings }
                       : {}),

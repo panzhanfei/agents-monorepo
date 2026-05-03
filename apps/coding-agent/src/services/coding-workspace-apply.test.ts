@@ -76,7 +76,7 @@ describe('applyCodingWorkspace', () => {
     restoreEnv(envKeys, prevEnv);
   });
 
-  it('scaffolds Next when instruction mentions Next (heuristic)', async () => {
+  it('greenfield with LLM off writes only requirement doc (no template scaffold)', async () => {
     const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'coding-apply-'));
     const res = await applyCodingWorkspace({
       workspaceRoot: tmp,
@@ -84,24 +84,14 @@ describe('applyCodingWorkspace', () => {
       instruction: '用 Next.js 做简历网站',
       workspaceLifecycleApplied: 'greenfield',
     });
-    expect(res.scaffoldApplied).toBe(true);
-    expect(res.stackChoice?.source).toBe('heuristic');
-    expect(res.stackChoice?.stackId).toBe('next-app-router');
-    expect(res.filesWrittenRelative).toContain('package.json');
-    expect(res.filesWrittenRelative).toContain('app/page.tsx');
-    expect(
-      res.filesWrittenRelative.some((f) => f.endsWith('REQUIREMENT.md'))
-    ).toBe(true);
-    const pkg = JSON.parse(
-      await fs.promises.readFile(path.join(tmp, 'package.json'), 'utf8')
-    ) as { dependencies?: { next?: string } };
-    expect(pkg.dependencies?.next).toBeDefined();
-    const nc = await fs.promises.readFile(path.join(tmp, 'next.config.ts'), 'utf8');
-    expect(nc).toContain("output: 'export'");
-    expect(res.filesWrittenRelative).toContain('app/not-found.tsx');
+    expect(res.scaffoldApplied).toBe(false);
+    expect(res.filesWrittenRelative).toEqual([
+      'docs/agents-coding/t1-REQUIREMENT.md',
+    ]);
+    expect(fs.existsSync(path.join(tmp, 'package.json'))).toBe(false);
   });
 
-  it('scaffolds Next when lead line is vague but PRD appendix names Next.js', async () => {
+  it('greenfield with merged PRD and LLM off still only requirement doc', async () => {
     const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'coding-apply-'));
     const instruction = [
       '编码：按引用消息的需求。',
@@ -118,11 +108,13 @@ describe('applyCodingWorkspace', () => {
       instruction,
       workspaceLifecycleApplied: 'greenfield',
     });
-    expect(res.stackChoice?.stackId).toBe('next-app-router');
-    expect(res.filesWrittenRelative).toContain('app/layout.tsx');
+    expect(res.scaffoldApplied).toBe(false);
+    expect(res.filesWrittenRelative).toEqual([
+      'docs/agents-coding/t-merge-REQUIREMENT.md',
+    ]);
   });
 
-  it('scaffolds Next for Chinese cue \"next技术栈\"', async () => {
+  it('greenfield Chinese Next cue with LLM off does not emit template files', async () => {
     const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'coding-apply-'));
     const res = await applyCodingWorkspace({
       workspaceRoot: tmp,
@@ -130,10 +122,13 @@ describe('applyCodingWorkspace', () => {
       instruction: '个人网站 SEO；采用next技术栈与静态导出',
       workspaceLifecycleApplied: 'greenfield',
     });
-    expect(res.stackChoice?.stackId).toBe('next-app-router');
+    expect(res.scaffoldApplied).toBe(false);
+    expect(res.filesWrittenRelative).toEqual([
+      'docs/agents-coding/t-zh-REQUIREMENT.md',
+    ]);
   });
 
-  it('only requirement when no stack signal and LLM off', async () => {
+  it('only requirement when vague instruction and LLM off', async () => {
     const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'coding-apply-'));
     const res = await applyCodingWorkspace({
       workspaceRoot: tmp,
@@ -142,10 +137,25 @@ describe('applyCodingWorkspace', () => {
       workspaceLifecycleApplied: 'greenfield',
     });
     expect(res.scaffoldApplied).toBe(false);
-    expect(res.stackChoice?.source).toBe('undetermined');
     expect(res.filesWrittenRelative.every((f) => f.endsWith('REQUIREMENT.md'))).toBe(
       true
     );
+  });
+
+  it('existing lifecycle on empty dir: requirement + lifecycle hint; no scaffold', async () => {
+    const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'coding-apply-'));
+    const res = await applyCodingWorkspace({
+      workspaceRoot: tmp,
+      taskId: 't-existing-empty',
+      instruction: '个人站点；Next.js 静态导出',
+      workspaceLifecycleApplied: 'existing',
+    });
+    expect(res.scaffoldApplied).toBe(false);
+    expect(res.applySummaryLines.join('\n')).toContain('工作区说明');
+    expect(res.applySummaryLines.join('\n')).toContain('existing');
+    expect(res.filesWrittenRelative).toEqual([
+      'docs/agents-coding/t-existing-empty-REQUIREMENT.md',
+    ]);
   });
 
   it('skips scaffold when package.json exists; writes requirement + fence file', async () => {
@@ -168,7 +178,6 @@ describe('applyCodingWorkspace', () => {
       workspaceLifecycleApplied: 'existing',
     });
     expect(res.scaffoldApplied).toBe(false);
-    expect(res.stackChoice).toBeUndefined();
     expect(res.filesWrittenRelative).toContain('src/util.js');
     const util = await fs.promises.readFile(
       path.join(tmp, 'src/util.js'),

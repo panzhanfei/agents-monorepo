@@ -1,12 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   feishuAutoReplyConfigured,
+  isLikelyFeishuOpenPlatformChatId,
   resetFeishuTokenCacheForTests,
+  sendFeishuOutboundText,
   sendFeishuTextToChat,
 } from './feishu-im-reply.js';
 import { createLogger } from '@agents/logger';
 
 const logger = createLogger({ service: 'orchestrator-test' });
+
+describe('isLikelyFeishuOpenPlatformChatId', () => {
+  it('accepts oc_ chat ids', () => {
+    expect(isLikelyFeishuOpenPlatformChatId('oc_chat1')).toBe(true);
+  });
+
+  it('rejects console synthetic channel ids', () => {
+    expect(isLikelyFeishuOpenPlatformChatId('agent-console')).toBe(false);
+  });
+});
 
 describe('sendFeishuTextToChat', () => {
   const origEnv = { ...process.env };
@@ -111,5 +123,19 @@ describe('sendFeishuTextToChat', () => {
     expect(body.receive_id).toBe('oc_chat1');
     expect(body.msg_type).toBe('text');
     expect(JSON.parse(String(body.content))).toEqual({ text: 'hello' });
+  });
+
+  it('skips outbound IM when chat_id is Agent Console synthetic (no HTTP)', async () => {
+    process.env.FEISHU_APP_ID = 'cli_test';
+    process.env.FEISHU_APP_SECRET = 'sec';
+    delete process.env.FEISHU_AUTO_REPLY;
+
+    const r = await sendFeishuOutboundText({
+      chatId: 'agent-console',
+      text: 'hello',
+      logger,
+    });
+    expect(r.kind).toBe('skipped');
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

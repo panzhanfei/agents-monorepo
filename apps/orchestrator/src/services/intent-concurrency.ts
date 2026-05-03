@@ -85,7 +85,15 @@ export const parseIntentFromMessage = (text: string): string | null => {
   ) {
     return 'requirements_analysis';
   }
-  if (/需求分析|PRD|requirements_analysis/i.test(t)) {
+  /** 「编码：…按 PRD…」正文中含字母 PRD，勿与下方「需求分析」误判混淆 */
+  if (/编码|写代码|^code\b/i.test(t)) {
+    return 'code';
+  }
+  if (
+    /需求分析/i.test(t) ||
+    /\brequirements_analysis\b/i.test(t) ||
+    /^\s*PRD\s*[：:]/im.test(t)
+  ) {
     return 'requirements_analysis';
   }
   if (/全量测试|^\s*测试[:：]|指令[:：]\s*全量/i.test(t)) {
@@ -105,9 +113,6 @@ export const parseIntentFromMessage = (text: string): string | null => {
   }
   if (/指令[:：]\s*状态|当前任务|^\s*状态/i.test(t)) {
     return 'status';
-  }
-  if (/编码|写代码|^code\b/i.test(t)) {
-    return 'code';
   }
   return null;
 };

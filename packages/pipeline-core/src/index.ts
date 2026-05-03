@@ -76,3 +76,9 @@ export type {
   ITestRunRequest,
   ITestRunResponse,
 } from './test-contract.js';
+
+export type { AgentsPipelineInboundKind } from './orchestration-inbound.js';
+export {
+  AGENTS_PIPELINE_CONSOLE_INBOUND_KIND,
+  AGENTS_PIPELINE_INBOUND_KIND_META_KEY,
+} from './orchestration-inbound.js';

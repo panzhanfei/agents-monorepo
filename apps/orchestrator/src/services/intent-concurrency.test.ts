@@ -30,6 +30,20 @@ describe('intent-concurrency', () => {
     expect(parseIntentFromMessage('绑定目标 app-b')).toBe('select_target');
   });
 
+  it('parseIntentFromMessage prefers code when instruction mentions PRD', () => {
+    expect(
+      parseIntentFromMessage(
+        '编码：按本条引用关联的 PRD 在目标仓库落地 Next.js SSG 个人站。'
+      )
+    ).toBe('code');
+  });
+
+  it('parseIntentFromMessage treats line-leading PRD： as requirements', () => {
+    expect(parseIntentFromMessage('PRD：登录模块改版')).toBe(
+      'requirements_analysis'
+    );
+  });
+
   it('parseIntentFromMessage detects requirements', () => {
     expect(parseIntentFromMessage('指令：需求分析\n说明…')).toBe(
       'requirements_analysis'

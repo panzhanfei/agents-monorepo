@@ -304,7 +304,7 @@ export const TargetProjectsPanel = ({
         <div className="space-y-5 rounded-xl border border-white/10 bg-linear-to-br from-black/52 via-teal-950/10 to-purple-950/15 px-4 py-5">
           {meta.rows.map((row, i) => (
             <div
-              key={`row-${String(i)}-${row.id}-${row.workspacePath}`}
+              key={row.id}
               ref={(el) => {
                 rowCardRefs.current[i] = el;
               }}

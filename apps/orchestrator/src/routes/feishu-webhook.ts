@@ -1,6 +1,12 @@
 import type { Express, Request, Response, NextFunction } from 'express';
 import type { ILogger } from '@agents/logger';
-import type { ITaskStore, IRequirementsAnalysisResponse } from '@agents/pipeline-core';
+import {
+  AGENTS_PIPELINE_CONSOLE_INBOUND_KIND,
+  AGENTS_PIPELINE_INBOUND_KIND_META_KEY,
+  type AgentsPipelineInboundKind,
+  type IRequirementsAnalysisResponse,
+  type ITaskStore,
+} from '@agents/pipeline-core';
 import path from 'node:path';
 import { AppError } from '@agents/http-errors';
 import {
@@ -48,6 +54,7 @@ import {
 import { mergeRequirementsMarkdownIntoCodingInstruction } from '../services/merge-requirements-into-coding-instruction.js';
 import { teeFeishuFlow } from '../services/tee-feishu-flow.js';
 import {
+  appendConsoleTextFilesToRequirementsMarkdown,
   mergeConsoleTextFilesIntoRawRequirement,
   parseConsoleRequirementsAttachments,
   stripConsoleRequirementsAttachmentsFromMetadata,
@@ -195,6 +202,12 @@ export const registerFeishuWebhookRoutes = (
       const rootMetaForPersistence =
         stripConsoleRequirementsAttachmentsFromMetadata(rootMeta);
 
+      const pipelineInboundKind: AgentsPipelineInboundKind =
+        rootMeta[AGENTS_PIPELINE_INBOUND_KIND_META_KEY] ===
+        AGENTS_PIPELINE_CONSOLE_INBOUND_KIND
+          ? 'agent_console'
+          : 'feishu';
+
       const respondFeishuJson = (
         statusCode: number,
         body: Record<string, unknown>,
@@ -210,6 +223,19 @@ export const registerFeishuWebhookRoutes = (
             ? body.feishuReplyText
             : undefined;
         res.status(statusCode).json(body);
+        if (pipelineInboundKind === 'agent_console') {
+          if (reply !== undefined) {
+            logger.info('feishu_im_suppressed', {
+              reason: 'agent_console_inbound',
+              httpStatus: statusCode,
+            });
+            teeFeishuFlow(
+              '>>> ⑥ Web 控制台',
+              '已由 HTTP JSON 返回正文，不触发飞书 IM'
+            );
+          }
+          return;
+        }
         if (
           reply !== undefined &&
           (channelId !== undefined || inboundMessageId !== undefined)
@@ -232,19 +258,18 @@ export const registerFeishuWebhookRoutes = (
                 );
               } else if (sendResult.kind === 'ok') {
                 teeFeishuFlow('>>> ⑥ 飞书会话', '已发群消息');
-              } else if (feishuAutoReplyConfigured()) {
+              } else if (sendResult.kind === 'skipped') {
                 teeFeishuFlow(
                   '>>> ⑥ 飞书会话',
-                  '已跳过发消息（FEISHU_AUTO_REPLY=0 或 false）'
+                  feishuAutoReplyConfigured()
+                    ? '未向飞书推送（占位会话 channelId / FEISHU_AUTO_REPLY 关闭）'
+                    : '未向飞书推送（未配置 FEISHU_APP_ID / FEISHU_APP_SECRET）'
                 );
-              } else {
-                teeFeishuFlow(
-                  '>>> ⑥ 飞书会话',
-                  '已跳过发消息（未配置 FEISHU_APP_ID / FEISHU_APP_SECRET）'
-                );
-                logger.info('feishu_im_reply_skipped', {
-                  reason: 'no_feishu_app_credentials',
-                });
+                if (!feishuAutoReplyConfigured()) {
+                  logger.info('feishu_im_reply_skipped', {
+                    reason: 'no_feishu_app_credentials',
+                  });
+                }
               }
             })
             .catch((e: unknown) => {
@@ -289,6 +314,7 @@ export const registerFeishuWebhookRoutes = (
       const runInbound = async (): Promise<void> => {
       logger.info('收到消息', {
         flow: 'receive',
+        pipelineInboundKind,
         channelId: channelId ?? null,
         inboundMessageId: inboundMessageId ?? null,
         quotableThreadTaskIdSuffix:
@@ -298,7 +324,10 @@ export const registerFeishuWebhookRoutes = (
         textLen: text.length,
         textPreview: previewText(text),
       });
-      teeFeishuFlow('>>> ② 正文', previewText(text));
+      teeFeishuFlow(
+        '>>> ② 正文',
+        `${previewText(text)}｜入口:${pipelineInboundKind === 'agent_console' ? 'Web控制台' : '飞书/直连'}`
+      );
 
       let action = parseIntentFromMessage(text);
       if (
@@ -528,6 +557,12 @@ export const registerFeishuWebhookRoutes = (
         const monorepoRoot = getOrchestratorMonorepoRoot();
         const extractedLead = extractLeadingTargetDirective(text);
         instructionBodyForWorkspaceActions = extractedLead.rest;
+        const consoleTargetRaw =
+          typeof rootMeta.consoleTargetProjectId === 'string'
+            ? rootMeta.consoleTargetProjectId.trim()
+            : '';
+        const consoleTargetProjectId =
+          consoleTargetRaw !== '' ? consoleTargetRaw : undefined;
         const agentsCfg = await loadAgentsConfig(
           { monorepoRoot },
           process.env
@@ -538,7 +573,8 @@ export const registerFeishuWebhookRoutes = (
           agentsCfg,
           {
             channelBoundTargetId: getFeishuChannelBoundTargetId(channelId),
-            inlineTargetId: extractedLead.targetId,
+            inlineTargetId:
+              extractedLead.targetId ?? consoleTargetProjectId,
           }
         );
         if (pick.kind === 'ambiguous') {
@@ -666,7 +702,11 @@ export const registerFeishuWebhookRoutes = (
           status: 'completed',
           metadata: {
             ...(params.taskRecord.metadata ?? {}),
-            requirementsMarkdown: analysis.markdown,
+            requirementsMarkdown:
+              appendConsoleTextFilesToRequirementsMarkdown(
+                analysis.markdown,
+                consoleReqAtt.textFiles
+              ),
             prdStatus: analysis.prdStatus,
           },
         });
@@ -1040,6 +1080,15 @@ export const registerFeishuWebhookRoutes = (
               instructionBody: instructionBodyForWorkspaceActions,
               ...(quotedThreadTaskId !== undefined
                 ? { quotedThreadTaskId }
+                : {}),
+              ...(channelId !== undefined && channelId.trim() !== ''
+                ? { channelId: channelId.trim() }
+                : {}),
+              ...(wx?.targetProjectId !== undefined &&
+              wx.targetProjectId.trim() !== ''
+                ? {
+                    customerTargetProjectId: wx.targetProjectId.trim(),
+                  }
                 : {}),
               taskStore,
             });

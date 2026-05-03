@@ -41,6 +41,8 @@ type IInstructionMode =
 type IQuote = {
   readonly id: string;
   readonly preview: string;
+  /** 被引用气泡的完整正文（编码时会并入 instruction，避免仅靠服务端任务合并） */
+  readonly body: string;
   readonly taskId?: string;
 };
 
@@ -91,6 +93,8 @@ const previewForQuote = (content: string, max = 140): string => {
   return oneLine.length <= max ? oneLine : `${oneLine.slice(0, max)}…`;
 };
 
+const MAX_QUOTED_BODY_CHARS = 120_000;
+
 const composeInstructionText = (
   mode: IInstructionMode,
   input: string,
@@ -126,7 +130,16 @@ const composeInstructionText = (
     if (t === '') {
       return { ok: false, error: '请填写编码说明。' };
     }
-    return { ok: true, text: `编码：${t}` };
+    let head = `编码：${t}`;
+    const qbRaw = quote?.body.trimEnd() ?? '';
+    if (qbRaw !== '') {
+      let qb =
+        qbRaw.length > MAX_QUOTED_BODY_CHARS
+          ? `${qbRaw.slice(0, MAX_QUOTED_BODY_CHARS)}\n\n…（引用正文过长已截断）`
+          : qbRaw;
+      head = `${head}\n\n---\n\n## 关联需求文档（PRD · 控制台引用）\n\n${qb}\n`;
+    }
+    return { ok: true, text: head };
   }
   if (mode === 'review') {
     return {
@@ -220,6 +233,88 @@ const accumulateFromSseLine = (
   }
 };
 
+const CONSOLE_TARGET_NONE = '__console_target_none__';
+
+type IConsoleProjectRow = {
+  readonly id: string;
+  readonly label?: string;
+};
+
+const useTypewriterDisplayed = (fullText: string, enabled: boolean): string => {
+  const [shown, setShown] = useState('');
+  const fullRef = useRef(fullText);
+  fullRef.current = fullText;
+  const prevFullLenRef = useRef(0);
+
+  useEffect(() => {
+    if (!enabled) {
+      prevFullLenRef.current = fullText.length;
+      return;
+    }
+    const prevLen = prevFullLenRef.current;
+    prevFullLenRef.current = fullText.length;
+    if (fullText.length < prevLen - 8) {
+      setShown('');
+      return;
+    }
+    if (
+      fullText.length - prevLen > 80 &&
+      prevLen > 0 &&
+      prevLen < 36
+    ) {
+      setShown('');
+    }
+  }, [fullText, enabled]);
+
+  useEffect(() => {
+    if (!enabled) {
+      setShown(fullText);
+      return;
+    }
+    const id = window.setInterval(() => {
+      setShown((s) => {
+        const t = fullRef.current;
+        if (s.length >= t.length) {
+          return s;
+        }
+        const lag = t.length - s.length;
+        const step = lag > 72 ? Math.max(1, Math.floor(lag / 14)) : 1;
+        return t.slice(0, s.length + step);
+      });
+    }, 17);
+    return () => window.clearInterval(id);
+  }, [enabled]);
+
+  useEffect(() => {
+    if (!enabled) {
+      setShown(fullText);
+    } else if (fullText.length === 0) {
+      setShown('');
+    }
+  }, [fullText, enabled]);
+
+  return enabled ? shown : fullText;
+};
+
+const AssistantMessageBody = ({
+  content,
+  typewriter,
+}: {
+  readonly content: string;
+  readonly typewriter: boolean;
+}): JSX.Element => {
+  const shown = useTypewriterDisplayed(content, typewriter);
+  const tail = typewriter && content.length > shown.length;
+  return (
+    <>
+      {typewriter ? shown : content}
+      {tail ? (
+        <span className="ml-0.5 inline-block h-[0.65rem] w-1 translate-y-[0.05rem] animate-pulse rounded-sm bg-cyan-200/90" />
+      ) : null}
+    </>
+  );
+};
+
 export type IStreamingChatProps = {
   readonly className?: string;
 };
@@ -232,7 +327,7 @@ export const StreamingChatDock = ({
       id: 'sys',
       role: 'assistant',
       content:
-        '**自由对话** 走 `/api/chat/stream`（LLM）；**流水线指令** 走 `/api/pipeline/invoke` → 编排器 `mock-feishu`，与飞书指令同一套能力。**需求分析** 可选中或拖拽 **暂存** 文档/图片（不会立刻解析）；在下方输入框写好说明后，点击 **「发送」** 才读取 PDF/文本/图并提交流水线。支持 `.txt` / `.md` / JSON、**PDF（文本层；扫描件请用图片 + 视觉模型）**、PNG/JPEG/WebP/GIF。引用 PRD 后再发补充，将像飞书引用回复一样合并修订。请在本机启动 orchestrator（默认 :4010），可在 `.env` 设置 `AGENTS_ORCHESTRATOR_URL`。',
+        '**自由对话** 走 `/api/chat/stream`（LLM）；**流水线指令** 走 `/api/pipeline/invoke` → 编排器 `mock-feishu`，与飞书指令同一套能力（正文保持飞书写法；多目标时可用下方 **目标项目** 指定会话范围，仍可与首行 `目标：<id>` 并用且 **首行优先**）。**需求分析** 可选中或拖拽 **暂存** 文档/图片（不会立刻解析）；在下方输入框写好说明后，点击 **「发送」** 才读取 PDF/文本/图并提交流水线。支持 `.txt` / `.md` / JSON、**PDF（文本层；扫描件请用图片 + 视觉模型）**、PNG/JPEG/WebP/GIF。引用助手 PRD 后再发补充，将像飞书引用回复一样合并修订。**代码编写**：建议先发「需求分析」生成 PRD；或对任意气泡点「引用」再写编码说明——引用正文会一并并入下发指令（避免只有一句「根据引用编码」却无 PRD）。请在本机启动 orchestrator（默认 :4010），可在 `.env` 设置 `AGENTS_ORCHESTRATOR_URL`。',
     },
   ]);
 
@@ -270,11 +365,68 @@ export const StreamingChatDock = ({
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const bufferRef = useRef('');
-  const { setLinked: setBackdropLinked } = useThoughtBackdropDrive();
+  const { setBackdropPhase, pulseInputTyping } = useThoughtBackdropDrive();
+  const inputTypingRef = useRef({ t: performance.now(), len: 0 });
+  const [targetProjects, setTargetProjects] = useState<IConsoleProjectRow[]>(
+    [],
+  );
+  const [targetProjectId, setTargetProjectId] = useState('');
+  const [assistantPipelineTwId, setAssistantPipelineTwId] = useState<
+    string | null
+  >(null);
 
   useEffect(() => {
-    setBackdropLinked(streaming || input.trim().length > 0);
-  }, [streaming, input, setBackdropLinked]);
+    void fetch('/api/config', { headers: authorizedJsonHeaders() })
+      .then(async (r) => (await r.json()) as unknown)
+      .then((body) => {
+        const rec =
+          body !== null && typeof body === 'object'
+            ? (body as Record<string, unknown>)
+            : {};
+        const hyd = rec.parsedHydrated;
+        if (hyd === null || typeof hyd !== 'object' || Array.isArray(hyd)) {
+          return;
+        }
+        const tgt = (hyd as Record<string, unknown>).target;
+        if (tgt === null || typeof tgt !== 'object' || Array.isArray(tgt)) {
+          return;
+        }
+        const projs = (tgt as Record<string, unknown>).projects;
+        if (!Array.isArray(projs)) {
+          return;
+        }
+        const rows: IConsoleProjectRow[] = [];
+        for (const p of projs) {
+          if (p === null || typeof p !== 'object' || Array.isArray(p)) {
+            continue;
+          }
+          const o = p as Record<string, unknown>;
+          const id = typeof o.id === 'string' ? o.id.trim() : '';
+          if (id === '') {
+            continue;
+          }
+          const label = typeof o.label === 'string' ? o.label.trim() : '';
+          rows.push({
+            id,
+            ...(label !== '' ? { label } : {}),
+          });
+        }
+        setTargetProjects(rows);
+      })
+      .catch(() => {
+        //
+      });
+  }, []);
+
+  useEffect(() => {
+    if (streaming === true) {
+      setBackdropPhase('thinking');
+    } else if (input.trim().length > 0) {
+      setBackdropPhase('input');
+    } else {
+      setBackdropPhase('idle');
+    }
+  }, [streaming, input, setBackdropPhase]);
 
   const tailFingerprint =
     `${String(messages[messages.length - 1]?.id ?? '')}:${String(
@@ -460,6 +612,9 @@ export const StreamingChatDock = ({
               role: m.role,
               content: m.content,
             })),
+            ...(targetProjectId.trim() !== ''
+              ? { targetProjectId: targetProjectId.trim() }
+              : {}),
           }),
         });
 
@@ -574,6 +729,7 @@ export const StreamingChatDock = ({
     }
 
     setStreaming(true);
+    setAssistantPipelineTwId(null);
 
     let assistantId = '';
 
@@ -596,6 +752,7 @@ export const StreamingChatDock = ({
               content: mat.error,
             },
           ]);
+          setStreaming(false);
           return;
         }
         materialized = {
@@ -621,6 +778,10 @@ export const StreamingChatDock = ({
 
       assistantId = `a:${globalThis.crypto.randomUUID()}`;
       const meta: Record<string, unknown> = {};
+      const tidPick = targetProjectId.trim();
+      if (tidPick !== '') {
+        meta.consoleTargetProjectId = tidPick;
+      }
       if (instructionMode === 'requirements' && quote === null) {
         meta.consolePrdReplyAnchorId = assistantId;
       }
@@ -655,6 +816,7 @@ export const StreamingChatDock = ({
         Object.keys(meta).length > 0 ? meta : undefined,
         quoteSnap !== null ? quoteSnap.id : undefined
       );
+      setAssistantPipelineTwId(assistantId);
     } catch (e) {
       const msg = e instanceof Error ? e.message : '请求失败';
       if (assistantId !== '') {
@@ -699,7 +861,9 @@ export const StreamingChatDock = ({
         : instructionMode === 'requirements'
           ? '描述产品需求，或上传 .txt / .md / PDF / 截图…'
           : instructionMode === 'code'
-            ? '说明要做的改动…'
+            ? quote !== null
+              ? '已引用上文：其正文会并入下发给编码 Agent 的指令；在此填写要做的改动说明…'
+              : '说明要做的改动…（可先点气泡「引用」选中 PRD 再编码）'
             : instructionMode === 'review'
               ? '可选：审核范围说明；留空则跑默认范围'
               : instructionMode === 'test'
@@ -715,7 +879,16 @@ export const StreamingChatDock = ({
       <ConsoleTextarea
         value={input}
         onChange={(e) => {
-          setInput(e.target.value);
+          const v = e.target.value;
+          setInput(v);
+          const now = performance.now();
+          const prev = inputTypingRef.current;
+          const dt = Math.max(8, now - prev.t);
+          const dLen = Math.abs(v.length - prev.len);
+          if (dLen > 0) {
+            pulseInputTyping((dLen / dt) * 1000);
+          }
+          inputTypingRef.current = { t: now, len: v.length };
         }}
         placeholder={inputPlaceholder}
         disabled={streaming}
@@ -825,7 +998,7 @@ export const StreamingChatDock = ({
         </div>
       ) : null}
 
-      <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
+      <div className="flex shrink-0 flex-col gap-2 lg:flex-row lg:items-end">
         <div className="min-w-0 flex-1">
           <ConsoleLabel
             htmlFor="agent-console-instruction-mode"
@@ -840,6 +1013,34 @@ export const StreamingChatDock = ({
               setInstructionMode(v as IInstructionMode);
             }}
             options={[...INSTRUCTION_MODE_OPTIONS]}
+            className="max-w-full"
+          />
+        </div>
+        <div className="min-w-0 flex-1">
+          <ConsoleLabel
+            htmlFor="agent-console-target-project"
+            className="mb-1 text-[0.72rem] text-white/55"
+          >
+            目标项目
+          </ConsoleLabel>
+          <ConsoleSelect
+            id="agent-console-target-project"
+            value={targetProjectId === '' ? CONSOLE_TARGET_NONE : targetProjectId}
+            onValueChange={(v) => {
+              setTargetProjectId(v === CONSOLE_TARGET_NONE ? '' : v);
+            }}
+            options={[
+              { value: CONSOLE_TARGET_NONE, label: '默认（随编排 / 飞书解析）' },
+              ...targetProjects.map((p) => {
+                const lb =
+                  p.label !== undefined && p.label.trim() !== ''
+                    ? `${p.label} (${p.id})`
+                    : p.id;
+                return { value: p.id, label: lb };
+              }),
+            ]}
+            disabled={streaming}
+            placeholder="选择目标…"
             className="max-w-full"
           />
         </div>
@@ -877,11 +1078,13 @@ export const StreamingChatDock = ({
             }
 
             const isAssistant = m.role !== 'user';
-            const isTailLive =
-              streaming &&
-              instructionMode === 'llm' &&
-              messages[messages.length - 1]?.id !== undefined &&
-              messages[messages.length - 1]?.id === m.id;
+            const isLastMessage = vi.index === messages.length - 1;
+            const assistantTypewriter =
+              isAssistant &&
+              isLastMessage &&
+              (streaming === true && instructionMode === 'llm'
+                ? true
+                : assistantPipelineTwId === m.id);
 
             const showQuoteBtn = m.id !== 'sys' && streaming !== true;
 
@@ -919,6 +1122,7 @@ export const StreamingChatDock = ({
                         setQuote({
                           id: m.id,
                           preview: previewForQuote(m.content, 220),
+                          body: m.content,
                           ...(m.taskId !== undefined
                             ? { taskId: m.taskId }
                             : {}),
@@ -931,10 +1135,16 @@ export const StreamingChatDock = ({
                 </div>
 
                 <div className="max-h-[min(36vh,14rem)] overflow-y-auto whitespace-pre-wrap font-mono text-[0.8rem] text-white/90">
-                  {m.content}
-                  {isTailLive === true ? (
-                    <span className="ml-1 inline-flex h-[0.6rem] w-[0.6rem] animate-pulse rounded-full bg-cyan-300/90" />
-                  ) : null}
+                  {isAssistant ? (
+                    <AssistantMessageBody
+                      content={m.content}
+                      typewriter={
+                        assistantTypewriter === true && m.id !== 'sys'
+                      }
+                    />
+                  ) : (
+                    m.content
+                  )}
                 </div>
               </article>
             );

@@ -1,39 +1,89 @@
-import type { Group, Mesh } from 'three';
+import type { Group, Mesh, MeshStandardMaterial } from 'three';
+import { Color } from 'three';
 import type { JSX } from 'react';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Float, MeshDistortMaterial, Sphere, Stars } from '@react-three/drei';
 
 import { ThoughtBackdropErrorBoundary } from '~/components/ThoughtBackdropErrorBoundary';
-import { useThoughtBackdropLinkedOptional } from '~/components/thought-backdrop-drive';
+import { useThoughtBackdropPhysics } from '~/components/thought-backdrop-drive';
 import { isBrowserWebGlLikelySupported } from '~/lib/webgl-capability';
 
 type IMeshDistortLike = {
   distort: number;
   speed: number;
+  color: Color;
+  emissive: Color;
 };
 
+const COL_WIRE_BASE = new Color('#62e8ff');
+const COL_WIRE_THINK = new Color('#fb923c');
+const COL_WIRE_EM_BASE = new Color('#090030');
+const COL_WIRE_EM_THINK = new Color('#431407');
+const COL_DIST_BASE = new Color('#bd7bff');
+const COL_DIST_THINK = new Color('#f472b6');
+const COL_DIST_EM_BASE = new Color('#1b003f');
+const COL_DIST_EM_THINK = new Color('#4c0519');
+
 const ThoughtCoreInner = (): JSX.Element => {
+  const { phaseRef, inputSpikeRef } = useThoughtBackdropPhysics();
   const meshWire = useRef<Group>(null);
   const distortMeshRef = useRef<Mesh>(null);
-  const linkedTarget = useThoughtBackdropLinkedOptional();
-  const blendRef = useRef(0);
+  const wireMeshRef = useRef<Mesh>(null);
+  const thinkingBlendRef = useRef(0);
+  const motionBlendRef = useRef(0);
+  const tmpWireCol = useRef(new Color());
+  const tmpWireEm = useRef(new Color());
+  const tmpDistCol = useRef(new Color());
+  const tmpDistEm = useRef(new Color());
 
   useFrame((_s, dt) => {
-    const tgt = linkedTarget ? 1 : 0;
-    blendRef.current += (tgt - blendRef.current) * (1 - Math.exp(-dt * 5.2));
-    const b = blendRef.current;
+    const phase = phaseRef.current;
+    const thinkTarget = phase === 'thinking' ? 1 : 0;
+    thinkingBlendRef.current +=
+      (thinkTarget - thinkingBlendRef.current) * (1 - Math.exp(-dt * 4.6));
+
+    let spike = inputSpikeRef.current;
+    spike *= Math.exp(-dt * 2.85);
+    inputSpikeRef.current = spike;
+
+    const inputBoost = phase === 'input' ? spike : spike * 0.28;
+    const motionTarget = Math.min(
+      1,
+      thinkingBlendRef.current * 0.92 + inputBoost * 0.88,
+    );
+    motionBlendRef.current +=
+      (motionTarget - motionBlendRef.current) * (1 - Math.exp(-dt * 6));
+
+    const b = motionBlendRef.current;
+    const tb = thinkingBlendRef.current;
 
     if (meshWire.current !== null) {
-      const spin = 0.35 + b * 1.05;
+      const spin = 0.32 + b * (0.85 + spike * 1.15);
       meshWire.current.rotation.y += dt * spin;
       const t = performance.now() / 1000;
+      const swayMul = 0.9 + spike * 1.35;
       meshWire.current.rotation.x =
-        Math.sin(t * (0.9 + b * 1.6)) * (0.42 + b * 0.28);
+        Math.sin(t * (0.9 + b * 1.6)) * (0.42 + b * 0.28) * swayMul;
       meshWire.current.rotation.z =
         Math.cos(t * (0.55 + b * 1.1)) * (0.08 + b * 0.12);
       const pulse = 1 + b * (0.07 + Math.sin(t * 3.4) * 0.035);
       meshWire.current.scale.setScalar(pulse);
+    }
+
+    const wireMat = wireMeshRef.current?.material;
+    if (
+      wireMat !== null &&
+      wireMat !== undefined &&
+      typeof wireMat === 'object' &&
+      'color' in wireMat &&
+      'emissive' in wireMat
+    ) {
+      const m = wireMat as MeshStandardMaterial;
+      tmpWireCol.current.lerpColors(COL_WIRE_BASE, COL_WIRE_THINK, tb);
+      tmpWireEm.current.lerpColors(COL_WIRE_EM_BASE, COL_WIRE_EM_THINK, tb);
+      m.color.copy(tmpWireCol.current);
+      m.emissive.copy(tmpWireEm.current);
     }
 
     const dm = distortMeshRef.current?.material;
@@ -42,11 +92,17 @@ const ThoughtCoreInner = (): JSX.Element => {
       dm !== undefined &&
       typeof dm === 'object' &&
       'distort' in dm &&
-      'speed' in dm
+      'speed' in dm &&
+      'color' in dm &&
+      'emissive' in dm
     ) {
       const shaderMat = dm as IMeshDistortLike;
-      shaderMat.distort = 0.42 + b * 0.42;
-      shaderMat.speed = 2.4 + b * 2.6;
+      shaderMat.distort = 0.42 + b * 0.48 + spike * 0.22;
+      shaderMat.speed = 2.4 + b * 2.8 + spike * 3.1;
+      tmpDistCol.current.lerpColors(COL_DIST_BASE, COL_DIST_THINK, tb);
+      tmpDistEm.current.lerpColors(COL_DIST_EM_BASE, COL_DIST_EM_THINK, tb);
+      shaderMat.color.copy(tmpDistCol.current);
+      shaderMat.emissive.copy(tmpDistEm.current);
     }
   });
 
@@ -58,7 +114,7 @@ const ThoughtCoreInner = (): JSX.Element => {
         floatIntensity={2}
       >
         <group ref={meshWire}>
-          <mesh>
+          <mesh ref={wireMeshRef}>
             <icosahedronGeometry args={[2.2, 1]} />
             <meshStandardMaterial
               attach="material"

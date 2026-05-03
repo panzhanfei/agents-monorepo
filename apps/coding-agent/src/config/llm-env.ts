@@ -1,6 +1,7 @@
 /**
  * 与 review-agent 对齐：OpenAI 兼容 Chat Completions（Ollama / vLLM / 云 API）。
- * 用于 **技术栈选型**；不配置 model 时跳过 LLM，仅用需求关键词启发式。
+ * 启用时由 **`trySynthesizeFilesFromInstruction`** 按任务正文生成实现代码围栏。
+ * 未配置 model / baseUrl 或显式关闭 `CODING_STACK_LLM` 时跳过实现 LLM（无手填围栏则通常仅写入需求文档）。
  */
 export type ICodingLlmEnvConfig = {
   readonly baseUrl: string;

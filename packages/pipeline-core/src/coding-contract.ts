@@ -6,6 +6,8 @@ export interface ICodingRunRequest {
   readonly workspacePath?: string;
   /**
    * `greenfield`：目录可不存在，coding-agent 自检时会 `mkdir -p`。缺省或与 `existing`：目录须事先存在。
+   * **与脚手架**：两者都不等价于「已是 Git/Node 工程」。若路径存在但未检测到 `package.json` 等清单，
+   * coding-agent 仍可能对空目录落地选型脚手架（见写入摘要中的「工作区说明」）。
    * 一般由 `customer-targets/<id>/target.yaml` 的 `workspaceLifecycle` 透出。
    */
   readonly workspaceLifecycle?: 'existing' | 'greenfield';

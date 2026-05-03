@@ -1,4 +1,7 @@
-import type { IRequirementsImageAttachment } from '@agents/pipeline-core';
+import {
+  AGENTS_PIPELINE_INBOUND_KIND_META_KEY,
+  type IRequirementsImageAttachment,
+} from '@agents/pipeline-core';
 
 const IMAGE_MIMES = new Set([
   'image/png',
@@ -101,6 +104,32 @@ export const parseConsoleRequirementsAttachments = (
   return { textFiles: limitedText, images };
 };
 
+/**
+ * 将控制台附件中的纯文本（如 PDF 抽取）附在 PRD 之后写入 `metadata.requirementsMarkdown`，
+ * 便于合并进编码指令时模型仍能看到**可引用的原文事实**（联系方式、日期等）。
+ */
+export const appendConsoleTextFilesToRequirementsMarkdown = (
+  prdMarkdown: string,
+  textFiles: readonly IConsoleRequirementsTextFile[],
+  maxTotalChars = 450_000
+): string => {
+  if (textFiles.length === 0) {
+    return prdMarkdown;
+  }
+  const base = prdMarkdown.trimEnd();
+  const core = textFiles
+    .map((f) => `### ${f.name}\n\n${f.content.trim()}`)
+    .join('\n\n---\n\n');
+  const appendix =
+    '\n\n---\n\n## 附件原文（编码时须逐字引用其中的联系方式与日期等事实，禁止臆造）\n\n' +
+    core;
+  const combined = `${base}${appendix}`;
+  if (combined.length <= maxTotalChars) {
+    return combined;
+  }
+  return `${combined.slice(0, maxTotalChars)}\n\n…（PRD+附件已截断至 ${String(maxTotalChars)} 字符）\n`;
+};
+
 export const mergeConsoleTextFilesIntoRawRequirement = (
   baseText: string,
   textFiles: readonly IConsoleRequirementsTextFile[]
@@ -135,5 +164,7 @@ export const stripConsoleRequirementsAttachmentsFromMetadata = (
   }
   const next: Record<string, unknown> = { ...meta };
   delete next.consoleRequirementsAttachments;
+  delete next.consoleTargetProjectId;
+  delete next[AGENTS_PIPELINE_INBOUND_KIND_META_KEY];
   return next;
 };

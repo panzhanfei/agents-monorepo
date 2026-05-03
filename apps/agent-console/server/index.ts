@@ -6,11 +6,17 @@ import {
   agentsConfigSchema,
   CUSTOMER_TARGETS_ROOT_REL,
   loadAgentsConfig,
+  lookupTargetProjectById,
   relativeCustomerTargetDefinitionPath,
   resolveAgentsConfigPath,
   targetProjectEntrySchema,
+  TARGET_PROJECT_ID_RE,
   type IAgentsConfigParsed,
 } from '@agents/agents-config';
+import {
+  AGENTS_PIPELINE_CONSOLE_INBOUND_KIND,
+  AGENTS_PIPELINE_INBOUND_KIND_META_KEY,
+} from '@agents/pipeline-core';
 import { loadMonorepoEnvFromEntry } from '@agents/logger';
 import { registerConsoleEnvRoutes } from './console-env.js';
 import { registerTargetAiRulesRoutes } from './target-ai-rules-routes.js';
@@ -47,12 +53,20 @@ const chatStreamBodySchema = z.object({
       content: z.string().min(1).max(200_000),
     })
   ).min(1),
+  targetProjectId: z
+    .string()
+    .min(1)
+    .max(120)
+    .regex(TARGET_PROJECT_ID_RE)
+    .optional(),
 });
 
 const pipelineInvokeBodySchema = z
   .object({
     text: z.string().min(1).max(200_000),
     channelId: z.string().min(1).optional(),
+    /** 与飞书事件一致：对用户这条消息 reply，优先于占位 channelId */
+    inboundMessageId: z.string().min(1).optional(),
     parentMessageId: z.string().min(1).optional(),
     rootMessageId: z.string().min(1).optional(),
     metadata: z.record(z.string(), z.unknown()).optional(),
@@ -470,6 +484,47 @@ export const createApp = (): express.Express => {
         return;
       }
 
+      let outboundMessages = parsed.data.messages;
+      const pickTid = parsed.data.targetProjectId?.trim();
+      if (pickTid !== undefined && pickTid !== '') {
+        try {
+          const agentsCfg = await loadAgentsConfig({ monorepoRoot });
+          const hit = lookupTargetProjectById(agentsCfg, pickTid);
+          if (hit === undefined) {
+            res.status(400).json({
+              message: `未知目标项目 id：${pickTid}（请检查 agents 配置中的 target.projects）`,
+            });
+            return;
+          }
+          const absWs = path.isAbsolute(hit.workspacePath)
+            ? hit.workspacePath
+            : path.resolve(monorepoRoot, hit.workspacePath);
+          const label = hit.label?.trim() ?? '';
+          outboundMessages = [
+            {
+              role: 'system' as const,
+              content: [
+                '当前会话在控制台中选定了如下「目标项目」上下文（与用户所选下拉框一致）：',
+                `- id：${hit.id}`,
+                label !== '' ? `- 名称：${label}` : null,
+                `- 工作区路径：${absWs}`,
+                '',
+                '回答时请优先围绕该项目的需求、代码与运维语境；不要臆造未给出的仓库细节。',
+              ]
+                .filter((s) => s !== null)
+                .join('\n'),
+            },
+            ...parsed.data.messages,
+          ];
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          res.status(503).json({
+            message: `加载 agents 配置失败，无法解析目标项目：${msg.slice(0, 320)}`,
+          });
+          return;
+        }
+      }
+
       const url = `${baseUrl.replace(/\/$/, '')}/chat/completions`;
       const upstream = await fetch(url, {
         method: 'POST',
@@ -481,7 +536,7 @@ export const createApp = (): express.Express => {
         },
         body: JSON.stringify({
           model,
-          messages: parsed.data.messages,
+          messages: outboundMessages,
           stream: true,
         }),
       });
@@ -560,11 +615,20 @@ export const createApp = (): express.Express => {
           ? baseOverride.replace(/\/$/, '')
           : `http://127.0.0.1:${port}`;
 
+      const mergedMetadata: Record<string, unknown> = {
+        ...(parsed.data.metadata ?? {}),
+        [AGENTS_PIPELINE_INBOUND_KIND_META_KEY]:
+          AGENTS_PIPELINE_CONSOLE_INBOUND_KIND,
+      };
+
       const url = `${base}/v1/mock-feishu`;
       const body: Record<string, unknown> = {
         text: parsed.data.text,
         ...(parsed.data.channelId !== undefined
           ? { channelId: parsed.data.channelId }
+          : {}),
+        ...(parsed.data.inboundMessageId !== undefined
+          ? { inboundMessageId: parsed.data.inboundMessageId }
           : {}),
         ...(parsed.data.parentMessageId !== undefined
           ? { parentMessageId: parsed.data.parentMessageId }
@@ -572,9 +636,7 @@ export const createApp = (): express.Express => {
         ...(parsed.data.rootMessageId !== undefined
           ? { rootMessageId: parsed.data.rootMessageId }
           : {}),
-        ...(parsed.data.metadata !== undefined
-          ? { metadata: parsed.data.metadata }
-          : {}),
+        metadata: mergedMetadata,
       };
 
       const upstream = await fetch(url, {
