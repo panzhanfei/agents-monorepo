@@ -45,22 +45,20 @@ flowchart TB
     PAGES --> SSEHOOK
   end
 
-  subgraph api["接口中间层 · Node Express"]
+  subgraph bff["接口中间层 · Node Express"]
     MW["中间件 · 安全头 · 限流 · body 限制"]
     AUTH["鉴权 / Session · JWT 或 Cookie"]
     RT["REST / RPC 路由"]
     ORCH["编排服务 · 状态机 · Zod 校验"]
     STRM["流式代理 · Agent stdout token"]
     WM["后台任务 · 队列消费者（可选）"]
-    BROWSER --> web
-    web -->|HTTPS API| api
     MW --> AUTH --> RT
     RT --> ORCH
     ORCH --> STRM
     ORCH --> WM
   end
 
-  subgraph agents["Agents · Python · HTTP"]
+  subgraph agentsLayer["Agents · Python · HTTP"]
     REQ["requirements<br/>PRD / AC"]
     COD["coding<br/>仓库修改"]
     REV["review<br/>门禁 + 评审"]
@@ -78,6 +76,8 @@ flowchart TB
     CFG["agents.config.yaml 等"]
   end
 
+  BROWSER --> web
+  web -->|HTTPS| bff
   ORCH --> REQ & COD & REV & TST & OPS
   STRM --> REQ & COD & REV & TST & OPS
   ORCH --> DB
@@ -206,13 +206,13 @@ flowchart TB
   SESS["会话 / 多轮上下文"]
   SK["Skill 载荷"]
   WS["TARGET_WORKSPACE_PATH"]
-  API["Express"]
-  PY["Python Agents"]
-  API --> TASK
-  API --> SESS
-  API --> SK
-  PY --> SK
-  PY --> WS
+  SRV["Express 中间层"]
+  AGT["Python Agents"]
+  SRV --> TASK
+  SRV --> SESS
+  SRV --> SK
+  AGT --> SK
+  AGT --> WS
 ```
 
 ---
