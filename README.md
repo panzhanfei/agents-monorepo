@@ -12,7 +12,8 @@
 |------|----------|
 | [README · Agent 细分 / 少进程 / 解耦](#agent-subroles-runner-decouple) | **逻辑角色（①～⑫）**、Runner 四进程映射、解耦边界表 |
 | [总览与版本节奏](./docs/overview.md) | 三层架构表、阶段一/二/三、pnpm+uv、**消息队列与 Runner 心跳**（必选） |
-| [v1 设计清单与实施进度](./docs/v1-design-and-progress.md) | 库表 / Redis / 队列 / Socket / JWT / 业务与 Agent·前端接口；**进度表（随记）** |
+| [实施分段（已定稿）](./docs/phased-delivery.md) | **一期 Node+前端（Agent 路由占位固定返回）**；二期 Agents + 联调前 **半天～一天对齐**；本地→打包/H5→上云 |
+| [v1 设计清单与实施进度](./docs/v1-design-and-progress.md) | 库表 / Redis / 队列 / JWT；**第一期 backlog 优先级 1～22（约 2～3 天）**；进度表 |
 | [业务域：用户与多项目](./docs/business-domain.md) | `workspaceRoot`、多项目隔离、Runner 安全与并发 |
 | [远程部署与 Electrobun 桌面](./docs/remote-desktop-electrobun.md) | 云 + 本机职责边界、桌面选型 |
 | [架构图与端到端流程](./docs/architecture-diagrams.md) | Mermaid 逻辑图、时序图、步骤流水线 |
@@ -20,11 +21,11 @@
 | [模块说明：桌面 · API · Agents](./docs/module-topology.md) | `apps/desktop`、`apps/api`、`agents/*`、共享契约 |
 | [坑点与对策](./docs/pitfalls.md) | CI、流式、Agent 拓扑、产品与编排 |
 | [高并发](./docs/high-concurrency.md) | 队列分区、无状态 API、背压与幂等 |
-| [清晰日志](./docs/logging.md) | `traceId`、字段表、脱敏 |
+| [清晰日志](./docs/logging.md) | `traceId`、字段表、脱敏；[**第一期 API 底线**](./docs/logging.md#phase1-logging-baseline) |
 | [数据概念图](./docs/data-model-concept.md) | User / Project / Task / Thread |
 | [本地开发与自测](./docs/local-development.md) | 桌面 / API / Runner 联调要点 |
 | [后续渠道：小程序与飞书](./docs/future-channels.md) | 阶段三；飞书 H5、机器人可选 |
-| [ARCHITECTURE（控制面定稿）](./docs/ARCHITECTURE.md) | HTTP、队列、心跳、部署拓扑（与实现同步扩展） |
+| [ARCHITECTURE（控制面定稿）](./docs/ARCHITECTURE.md) | Runner **HTTP API**（生产 TLS）；Redis **不暴露**给 Runner；JWT；心跳门禁；BullMQ 与 Worker **占位说明**；[**§10 优雅退出**](./docs/ARCHITECTURE.md#graceful-shutdown) |
 
 **索引入口**：[docs/README.md](./docs/README.md)（与上表同步维护即可）
 

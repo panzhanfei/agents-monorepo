@@ -5,7 +5,12 @@
 ## 架构与文档
 
 - 全仓约定：[仓库根 README](../../README.md) 文档地图、[模块拓扑](../../docs/module-topology.md)。  
-- 控制面定稿目标：[ARCHITECTURE.md](../ARCHITECTURE.md)（与 v1 设计评审同步扩展）。
+- **控制面定稿（Runner 仅 HTTPS、认领模型、Redis 边界）**：[ARCHITECTURE.md](../ARCHITECTURE.md)。
+
+### Runner 派发（读 ARCHITECTURE §2）
+
+- **Runner 只连 HTTPS**：轮询 / 长轮询 / WebSocket 用于「认领任务」；**Redis/BullMQ 不暴露给 Runner**。  
+- **`pnpm worker:api`**：当前为 **内部占位**（模拟完成任务）；认领 API 落地后应 **停用或收窄**，避免与 Runner 执行语义冲突。
 
 ---
 
