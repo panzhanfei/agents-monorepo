@@ -1,0 +1,12 @@
+{
+  "name": "agents-monorepo",
+  "private": true,
+  "packageManager": "pnpm@9.15.1",
+  "scripts": {
+    "dev:api": "pnpm --filter api dev",
+    "worker:api": "pnpm --filter api worker",
+    "db:migrate": "pnpm --filter api db:migrate",
+    "db:seed": "pnpm --filter api db:seed",
+    "db:generate": "pnpm --filter api db:generate"
+  }
+}
