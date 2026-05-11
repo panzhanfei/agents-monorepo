@@ -1,6 +1,0 @@
-id: default
-workspacePath: /Users/panzhanfei/Desktop/project/own/resume
-label: resume（潘展飞）
-deploySshPort: "22"
-probeListenPorts: 80,443,3000,4000
-
