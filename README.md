@@ -5,8 +5,8 @@
 | 层级 | 技术 | 职责 |
 |------|------|------|
 | **本机客户端** | **[Electrobun](https://blackboard.sh/electrobun/docs/) + React** | 打包为 **桌面应用**：多项目配置、对话与任务视图、流式日志；通过 **HTTPS** 连云端 API；与本机 **Runner（Python）** 同进程或 RPC 协作，**唯一**经授权操作 `workspaceRoot` 的入口 |
-| **接口 / 中间层（部署在云端）** | **Node.js + Express** | 鉴权、多项目元数据、任务编排与队列入队；**不在服务器上对客户工程目录做增删改查**；将需落盘 / Git / 子进程的步骤 **投递给已注册的 Runner 设备** |
-| **Agents / Runner** | **Python（[uv](https://github.com/astral-sh/uv)）** | **跑在用户电脑上**（由 Electrobun 安装包或子进程拉起）：需求/编码/审核/测试等；服务器 **无** 客户仓写权限；依赖由本机 **uv** 管理 |
+| **接口 / 中间层（部署在云端）** | **Node.js + Express** | 鉴权、多项目元数据、任务编排；**经消息队列** 投递异步任务；**不在服务器上对客户工程目录做增删改查**；将需落盘 / Git / 子进程的步骤 **发布到绑定 `runnerDeviceId` 的队列分区** |
+| **Agents / Runner** | **Python（[uv](https://github.com/astral-sh/uv)）** | **跑在用户电脑上**：**消费队列（拉取/ACK）** 执行各 Agent；**周期性上报心跳** 至云端以标记在线；服务器 **无** 客户仓写权限；依赖由本机 **uv** 管理 |
 
 共享的 **步骤类型、任务 DTO、运行时 Skill** 等契约，建议在仓库内以 **OpenAPI / JSON Schema**（或等效单一源码）描述，由 Node 与 Python 共同遵循，避免双端各写一套枚举。
 
@@ -19,13 +19,24 @@
 - **关系**：同属一个 Git 仓库；**不要求** 把 Python 放进 `package.json`。根目录可用脚本把两端串起来，例如 `"dev:agents": "uv run --directory agents/coding python -m coding.cli"`，或在 Turborepo 里为 Python 任务单独配置 `outputs` / `cache`。  
 - **锁文件**：Node 与 Python 各一把锁（`pnpm-lock.yaml` + 各 `uv.lock`），CI 中同时安装两者即可。
 
+### 必选基础设施：消息队列与 Runner 心跳
+
+两者均为 **架构必选**，不是可选优化项。
+
+| 组件 | 部署位置 | 作用 |
+|------|----------|------|
+| **消息队列** | **云端**（与 Express 同 VPC 或托管服务） | **削峰、异步、可靠投递**：Express 只做「校验 + 入队 + 更新任务状态」；Runner **拉取 / 订阅并 ACK** 任务，避免同步 HTTP 阻塞与易丢消息；支持 **按 `runnerDeviceId` / `projectId` 分区**，防止错投；**DLQ、可见性超时、幂等键** 在 `docs/ARCHITECTURE.md` 定稿（技术选型如 Redis Streams、RabbitMQ、NATS、SQS 等）。 |
+| **Runner 心跳** | **本机 Runner → 云端 API** | **在线状态真源**：周期性上报（或 WebSocket 保活），载荷含 `runnerDeviceId`、`userId`、Runner/契约版本、可选已挂载 `projectId` 摘要；云端维护 **`lastSeenAt`**，用于 **仅向在线 Runner 派发可写盘任务**、桌面/飞书侧展示「设备离线」及告警。**间隔、超时判定（如连续 N 周期未收到即离线）** 写入 `docs/ARCHITECTURE.md`。 |
+
+**关系简述**：写盘类步骤 **先入队**；调度或消费前校验 **目标 Runner 心跳仍有效**，否则 **延迟入队或返回明确失败**，与飞书移动端门禁一致。
+
 ---
 
 ## 文档与约定
 
 | 资源 | 说明 |
 |------|------|
-| `docs/ARCHITECTURE.md` | 建议维护：HTTP 契约、步骤机、Skill 字段表、部署拓扑（若尚未创建，可与本 README 同步演进） |
+| `docs/ARCHITECTURE.md` | 建议维护：HTTP 契约、步骤机、Skill、**消息队列分区与消费语义**、**Runner 心跳字段与超时策略**、部署拓扑 |
 | `docs/FEISHU_COMMANDS.md` | **（后续规划）** 飞书指令词与内部 `action` 映射；v1 可仅占位 |
 | `.cursor/rules/project-conventions.mdc` | Monorepo 通用约定（密钥不进库、类型与测试习惯等） |
 | `.cursor/rules/env-secrets.mdc` | 环境变量与密钥 |
@@ -313,7 +324,7 @@ flowchart TB
 3. **traceId + 结构化日志**（防跨语言排障地狱）  
 4. **同源测试/门禁命令 + Skill 版本**（防「绿了但 CI 红」与半升级）  
 5. **DB 会话/任务 + 危险操作审计**（防责任不可追溯与状态黑洞）  
-6. **无状态 API + 队列削峰 + 可水平扩展 Worker**（见下文「高并发」）  
+6. **无状态 API + 消息队列 + Runner 心跳 + 可扩展消费端**（见上文「必选基础设施」及「高并发」）  
 7. **全服务统一 JSON 日志字段与脱敏策略**（见下文「清晰日志」）  
 8. **客户工程不落服务器盘**：文件类步骤 **只** 由 **Runner** 完成；标配客户端为 **Electrobun + React**（见 **「远程部署与本机桌面」**）
 
@@ -321,9 +332,15 @@ flowchart TB
 
 ## 高并发方案（设计约定）
 
-目标：**入口扛住突发流量**，**下游（LLM / 子进程 / 客户仓）不被瞬间打穿**，且 **扩容时尽量不改写业务代码**。
+**目标**：入口扛突发；**消息队列** 削峰且可靠投递；**Runner 心跳** 保证任务不长期积压在离线设备；扩容尽量不动业务分支逻辑。队列承担 **削峰与可靠投递**，心跳承担 **可调度性**。
 
-### 架构分层
+### 消息队列（与必选基础设施对齐）
+
+- **生产**：Express 在校验 `userId` / `projectId` /（写盘类）**Runner 在线** 后 **发布消息**；消息体含 `taskId`、`traceId`、步骤类型、`skillSchemaVersion`、目标 `runnerDeviceId` 等。  
+- **消费**：Runner 内 **单消费者或多 worker 进程** 从 **专属分区或 routing key** 拉取；**ACK/NACK**、重试与 **DLQ** 行为与业务幂等键一起在 `docs/ARCHITECTURE.md` 写明。  
+- **多 Runner / 多项目**：按设备与项目 **隔离队列或 key**，避免 A 用户任务被 B 用户 Runner 拉取。
+
+### 架构分层（补充）
 
 | 层级 | 高并发要点 |
 |------|------------|
@@ -362,6 +379,7 @@ flowchart TB
 | `traceId` | **全链路透传**（HTTP Header，如 `X-Request-Id`，缺失则入口生成） |
 | `taskId` / `runId` | 编排任务与单次运行标识，便于与 DB 状态对照 |
 | `projectId` | **项目作用域**（一人多项目时排障与配额必选） |
+| `runnerDeviceId` | **Runner 实例**（心跳、队列消费、多机排障） |
 | `userId` | 仅存内部 id 或 **哈希**，避免可直接识别 PII |
 | `msg` / `message` | 简短人类可读说明 |
 | `err` | 错误时：`name`、`message`、**脱敏后的** `stack`（可选，按环境） |
