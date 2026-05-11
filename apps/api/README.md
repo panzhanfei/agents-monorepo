@@ -2,7 +2,12 @@
 
 云端 **Express** 控制面：健康检查、Runner 心跳、任务入队（BullMQ + Redis）、PostgreSQL 持久化。
 
-## 前置条件
+## 架构与文档
+
+- 全仓约定：[仓库根 README](../../README.md) 文档地图、[模块拓扑](../../docs/module-topology.md)。  
+- 控制面定稿目标：[ARCHITECTURE.md](../ARCHITECTURE.md)（与 v1 设计评审同步扩展）。
+
+---
 
 - Node 18+、`pnpm`
 - **Docker**：用于本地 PostgreSQL + Redis（见仓库根 `docker-compose.yml`）
