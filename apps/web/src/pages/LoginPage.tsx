@@ -1,37 +1,34 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Button, Callout, Flex, TextField } from "@radix-ui/themes";
 import { Link, useNavigate } from "react-router-dom";
-import { ApiError, postLogin } from "@/api";
 import { useAuth } from "@/auth";
+import { getMutationErrorMessage, useLoginMutation } from "@/hooks";
 import { AuthScreen } from "./AuthScreen";
 
 export const LoginPage = () => {
   const navigate = useNavigate();
-  const { setSession } = useAuth();
+  const { accessToken } = useAuth();
+  const login = useLoginMutation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    setError(null);
+    login.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset on credential edit only; `login` identity is unstable
   }, [email, password]);
+
+  useEffect(() => {
+    if (accessToken) {
+      navigate("/projects", { replace: true });
+    }
+  }, [accessToken, navigate]);
 
   const onSubmit = (e: FormEvent): void => {
     e.preventDefault();
-    setLoading(true);
-    setError(null);
-    void postLogin({ email, password })
-      .then((res) => {
-        setSession(res.accessToken, res.refreshToken, res.user);
-        navigate("/projects", { replace: true });
-      })
-      .catch((err: unknown) => {
-        const msg = err instanceof ApiError ? err.message : "Login failed";
-        setError(msg);
-      })
-      .finally(() => setLoading(false));
+    login.mutate({ email, password });
   };
+
+  const error = login.isError ? getMutationErrorMessage(login.error, "Login failed") : null;
 
   return (
     <AuthScreen title="登录" subtitle="专注、利落，一秒进入工作台">
@@ -74,8 +71,8 @@ export const LoginPage = () => {
             />
           </div>
           <Flex direction="column" gap="2" mt="2">
-            <Button type="submit" size="3" disabled={loading} className="auth-submit">
-              {loading ? "登录中…" : "进入控制台"}
+            <Button type="submit" size="3" disabled={login.isPending} className="auth-submit">
+              {login.isPending ? "登录中…" : "进入控制台"}
             </Button>
             <Button variant="ghost" color="gray" size="3" asChild className="auth-alt-link">
               <Link to="/register">创建新账号</Link>

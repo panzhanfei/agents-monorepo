@@ -16,21 +16,34 @@ import {
   TextField,
 } from "@radix-ui/themes";
 import { Link as RouterLink, useParams } from "react-router-dom";
-import type { IRunnerRow, ITaskRow } from "@/api";
-import { runEnqueueTask, runReloadProjectTasksLists, subscribeTaskDetailPolling } from "@/utils";
+import { ApiError } from "@/api";
+import {
+  getTasksMutationErrorMessage,
+  useEnqueueTaskMutation,
+  useRunnersListQuery,
+  useTaskDetailQuery,
+  useTasksByProjectQuery,
+} from "@/hooks";
 
 export const ProjectTasksPage = () => {
   const params = useParams();
   const projectId = params.projectId ?? "";
 
-  const [runners, setRunners] = useState<IRunnerRow[]>([]);
-  const [tasks, setTasks] = useState<ITaskRow[]>([]);
+  const runnersQ = useRunnersListQuery();
+  const tasksQ = useTasksByProjectQuery(projectId);
+  const runners = useMemo(() => runnersQ.data ?? [], [runnersQ.data]);
+  const tasks = useMemo(() => tasksQ.data ?? [], [tasksQ.data]);
+
   const [runnerDeviceId, setRunnerDeviceId] = useState("");
   const [payloadText, setPayloadText] = useState("{}");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const [detail, setDetail] = useState<ITaskRow | null>(null);
   const [pollMs, setPollMs] = useState(2500);
-  const [error, setError] = useState<string | null>(null);
+  const [payloadError, setPayloadError] = useState<string | null>(null);
+
+  const detailQ = useTaskDetailQuery(selectedTaskId, pollMs);
+  const detail = detailQ.data ?? null;
+
+  const enqueueM = useEnqueueTaskMutation(projectId);
 
   const selectedRunnerOnline = useMemo(() => {
     const r = runners.find((x) => x.id === runnerDeviceId);
@@ -40,44 +53,41 @@ export const ProjectTasksPage = () => {
   }, [runnerDeviceId, runners]);
 
   useEffect(() => {
-    runReloadProjectTasksLists({
-      projectId,
-      runnerDeviceId: "",
-      setRunners,
-      setTasks,
-      setRunnerDeviceId,
-      setError,
-    });
-  }, [projectId]);
-
-  useEffect(() => {
-    if (!selectedTaskId) {
-      setDetail(null);
-      return () => undefined;
+    if (!runnerDeviceId && runners.length > 0) {
+      setRunnerDeviceId(runners[0].id);
     }
-    return subscribeTaskDetailPolling(selectedTaskId, pollMs, (task) => setDetail(task));
-  }, [pollMs, selectedTaskId]);
+  }, [runnerDeviceId, runners]);
+
+  const listLoadError = runnersQ.isError
+    ? runnersQ.error instanceof ApiError
+      ? runnersQ.error.message
+      : "Failed to load runners"
+    : null;
+  const tasksLoadError = tasksQ.isError
+    ? tasksQ.error instanceof ApiError
+      ? tasksQ.error.message
+      : "Failed to load tasks"
+    : null;
+  const enqueueError = enqueueM.isError ? getTasksMutationErrorMessage(enqueueM.error) : null;
+  const error = listLoadError ?? tasksLoadError ?? payloadError ?? enqueueError;
 
   const onEnqueue = (e: FormEvent): void => {
     e.preventDefault();
+    setPayloadError(null);
+    enqueueM.reset();
     let payload: Record<string, unknown> = {};
     try {
       payload = JSON.parse(payloadText) as Record<string, unknown>;
     } catch {
-      setError("payload 必须是合法 JSON");
+      setPayloadError("payload 必须是合法 JSON");
       return;
     }
+    enqueueM.mutate({ projectId, runnerDeviceId, payload });
+  };
 
-    void runEnqueueTask(projectId, runnerDeviceId, payload, () => {
-      runReloadProjectTasksLists({
-        projectId,
-        runnerDeviceId,
-        setRunners,
-        setTasks,
-        setRunnerDeviceId,
-        setError,
-      });
-    }, setError);
+  const reloadLists = (): void => {
+    void runnersQ.refetch();
+    void tasksQ.refetch();
   };
 
   return (
@@ -102,21 +112,7 @@ export const ProjectTasksPage = () => {
             </Link>
           </Flex>
         </Box>
-        <Button
-          type="button"
-          variant="soft"
-          color="gray"
-          onClick={() =>
-            runReloadProjectTasksLists({
-              projectId,
-              runnerDeviceId,
-              setRunners,
-              setTasks,
-              setRunnerDeviceId,
-              setError,
-            })
-          }
-        >
+        <Button type="button" variant="soft" color="gray" onClick={reloadLists}>
           刷新列表
         </Button>
       </Flex>
@@ -165,7 +161,9 @@ export const ProjectTasksPage = () => {
                 <TextArea id="task-payload" rows={8} value={payloadText} onChange={(evt) => setPayloadText(evt.target.value)} />
               </Flex>
 
-              <Button type="submit">enqueue</Button>
+              <Button type="submit" disabled={enqueueM.isPending}>
+                {enqueueM.isPending ? "提交中…" : "enqueue"}
+              </Button>
             </Flex>
           </form>
         </Flex>
@@ -205,7 +203,7 @@ export const ProjectTasksPage = () => {
                   <Table.Row>
                     <Table.Cell colSpan={4}>
                       <Text color="gray" size="2" highContrast={false}>
-                        暂无任务
+                        {tasksQ.isPending ? "加载中…" : "暂无任务"}
                       </Text>
                     </Table.Cell>
                   </Table.Row>
@@ -262,7 +260,7 @@ export const ProjectTasksPage = () => {
               </Box>
             ) : (
               <Text color="gray" size="2" highContrast={false}>
-                加载中…
+                {detailQ.isPending ? "加载中…" : "—"}
               </Text>
             )}
           </Flex>

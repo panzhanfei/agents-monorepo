@@ -1,37 +1,34 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Button, Callout, Flex, TextField } from "@radix-ui/themes";
 import { Link, useNavigate } from "react-router-dom";
-import { ApiError, postRegister } from "@/api";
 import { useAuth } from "@/auth";
+import { getMutationErrorMessage, useRegisterMutation } from "@/hooks";
 import { AuthScreen } from "./AuthScreen";
 
 export const RegisterPage = () => {
   const navigate = useNavigate();
-  const { setSession } = useAuth();
+  const { accessToken } = useAuth();
+  const register = useRegisterMutation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    setError(null);
+    register.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset on credential edit only; `register` identity is unstable
   }, [email, password]);
+
+  useEffect(() => {
+    if (accessToken) {
+      navigate("/projects", { replace: true });
+    }
+  }, [accessToken, navigate]);
 
   const onSubmit = (e: FormEvent): void => {
     e.preventDefault();
-    setLoading(true);
-    setError(null);
-    void postRegister({ email, password })
-      .then((res) => {
-        setSession(res.accessToken, res.refreshToken, res.user);
-        navigate("/projects", { replace: true });
-      })
-      .catch((err: unknown) => {
-        const msg = err instanceof ApiError ? err.message : "Register failed";
-        setError(msg);
-      })
-      .finally(() => setLoading(false));
+    register.mutate({ email, password });
   };
+
+  const error = register.isError ? getMutationErrorMessage(register.error, "Register failed") : null;
 
   return (
     <AuthScreen title="注册" subtitle="密码至少 8 位，即刻开始协作">
@@ -74,8 +71,8 @@ export const RegisterPage = () => {
             />
           </div>
           <Flex direction="column" gap="2" mt="2">
-            <Button type="submit" size="3" disabled={loading} className="auth-submit">
-              {loading ? "创建中…" : "创建并登录"}
+            <Button type="submit" size="3" disabled={register.isPending} className="auth-submit">
+              {register.isPending ? "创建中…" : "创建并登录"}
             </Button>
             <Button variant="ghost" color="gray" size="3" asChild className="auth-alt-link">
               <Link to="/login">已有账号？去登录</Link>

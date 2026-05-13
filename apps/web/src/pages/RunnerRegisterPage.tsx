@@ -1,7 +1,8 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { Box, Button, Callout, Card, Code, Flex, Heading, Link, Text, TextField } from "@radix-ui/themes";
 import { Link as RouterLink } from "react-router-dom";
-import { ApiError, getApiBase, registerRunner, postRunnerHeartbeat } from "@/api";
+import { ApiError, getApiBase } from "@/api";
+import { useRegisterRunnerMutation, useRunnerHeartbeatMutation } from "@/hooks";
 import { copyLabelToClipboard } from "@/utils";
 
 export const RunnerRegisterPage = () => {
@@ -9,48 +10,63 @@ export const RunnerRegisterPage = () => {
   const [deviceKey, setDeviceKey] = useState("");
   const [deviceSecret, setDeviceSecret] = useState("");
   const [note, setNote] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  const registerM = useRegisterRunnerMutation();
+  const heartbeatM = useRunnerHeartbeatMutation();
 
   const canHeartbeat = useMemo(() => Boolean(deviceKey && deviceSecret), [deviceKey, deviceSecret]);
 
+  const registerError = registerM.isError
+    ? registerM.error instanceof ApiError
+      ? registerM.error.message
+      : "Register failed"
+    : null;
+  const heartbeatError = heartbeatM.isError
+    ? heartbeatM.error instanceof Error
+      ? heartbeatM.error.message
+      : "Heartbeat failed"
+    : null;
+  const error = registerError ?? heartbeatError ?? localError;
+
   const onRegister = (e: FormEvent): void => {
     e.preventDefault();
-    setError(null);
     setNote(null);
-    void registerRunner({ displayName })
-      .then((res) => {
-        setDeviceKey(res.runner.deviceKey);
-        setDeviceSecret(res.deviceSecret);
-        setNote("设备密钥只在注册响应中出现一次：请立即复制保存。");
-      })
-      .catch((err: unknown) => {
-        const msg = err instanceof ApiError ? err.message : "Register failed";
-        setError(msg);
-      });
+    setLocalError(null);
+    registerM.mutate(
+      { displayName },
+      {
+        onSuccess: (res) => {
+          setDeviceKey(res.runner.deviceKey);
+          setDeviceSecret(res.deviceSecret);
+          setNote("设备密钥只在注册响应中出现一次：请立即复制保存。");
+        },
+      },
+    );
   };
 
   const onHeartbeat = (): void => {
-    setError(null);
     setNote(null);
-    void postRunnerHeartbeat(deviceKey, deviceSecret, {
-      contractVersion: "0-placeholder",
-      mountedProjectIds: [],
-    })
-      .then(() => setNote("心跳成功：你可以回到「任务」页面尝试 enqueue。"))
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Heartbeat failed"));
+    setLocalError(null);
+    heartbeatM.mutate(
+      { deviceKey, deviceSecret },
+      {
+        onSuccess: () => setNote("心跳成功：你可以回到「任务」页面尝试 enqueue。"),
+      },
+    );
   };
 
   const onCopyDeviceKey = (): void => {
     void copyLabelToClipboard("deviceKey", deviceKey).then((result) => {
       if (result.ok) setNote(result.note);
-      else setError(result.error);
+      else setLocalError(result.error);
     });
   };
 
   const onCopyDeviceSecret = (): void => {
     void copyLabelToClipboard("deviceSecret", deviceSecret).then((result) => {
       if (result.ok) setNote(result.note);
-      else setError(result.error);
+      else setLocalError(result.error);
     });
   };
 
@@ -103,7 +119,9 @@ export const RunnerRegisterPage = () => {
                 </Text>
                 <TextField.Root id="runner-display" value={displayName} onChange={(evt) => setDisplayName(evt.target.value)} />
               </Flex>
-              <Button type="submit">注册 Runner</Button>
+              <Button type="submit" disabled={registerM.isPending}>
+                {registerM.isPending ? "注册中…" : "注册 Runner"}
+              </Button>
             </Flex>
           </form>
         </Flex>
@@ -136,8 +154,8 @@ export const RunnerRegisterPage = () => {
             <Button type="button" variant="soft" color="gray" disabled={!deviceSecret} onClick={onCopyDeviceSecret}>
               复制 deviceSecret
             </Button>
-            <Button type="button" disabled={!canHeartbeat} onClick={onHeartbeat}>
-              我已保存 · 发送心跳
+            <Button type="button" disabled={!canHeartbeat || heartbeatM.isPending} onClick={onHeartbeat}>
+              {heartbeatM.isPending ? "发送中…" : "我已保存 · 发送心跳"}
             </Button>
           </Flex>
 

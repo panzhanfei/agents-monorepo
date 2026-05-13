@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { apiSetAccessToken, clearAccessToken } from "@/api";
+import { queryClient } from "@/query/client";
 import { restoreSessionFromToken } from "./bootstrapSession";
 import { clearAllStoredAuth, readStoredToken, writeStoredRefresh, writeStoredToken } from "./tokenStorage";
 import type { IAuthContextValue, IAuthUser } from "./interface";
@@ -51,6 +52,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const clearSession = useCallback(() => {
     clearAllStoredAuth();
     clearAccessToken();
+    queryClient.clear();
     setAccessTokenState(null);
     setUser(null);
   }, []);

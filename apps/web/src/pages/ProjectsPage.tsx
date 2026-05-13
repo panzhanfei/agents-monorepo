@@ -1,28 +1,37 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { Box, Button, Callout, Card, Flex, Heading, Link, Table, Text, TextField } from "@radix-ui/themes";
 import { Link as RouterLink } from "react-router-dom";
-import type { IProjectRow } from "@/api";
+import { ApiError } from "@/api";
 import { readStoredProjectId, writeStoredProjectId } from "@/auth";
-import { runCreateProject, runProjectsReload } from "@/utils";
+import {
+  getProjectsMutationErrorMessage,
+  useCreateProjectMutation,
+  useProjectsListQuery,
+} from "@/hooks";
 
 export const ProjectsPage = () => {
-  const [projects, setProjects] = useState<IProjectRow[]>([]);
+  const projectsQ = useProjectsListQuery();
+  const createM = useCreateProjectMutation();
+
   const [name, setName] = useState("Demo Project");
   const [workspaceRoot, setWorkspaceRoot] = useState("/tmp/demo-workspace");
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(() => readStoredProjectId());
+
+  const projects = projectsQ.data ?? [];
+  const loadError = projectsQ.isError
+    ? projectsQ.error instanceof ApiError
+      ? projectsQ.error.message
+      : "Failed to load projects"
+    : null;
+  const createError = createM.isError ? getProjectsMutationErrorMessage(createM.error) : null;
+  const error = loadError ?? createError;
 
   const hint =
     currentProjectId === null ? "未选择当前项目：在表格里点「设为当前」。" : `当前项目：${currentProjectId}`;
 
-  useEffect(() => {
-    runProjectsReload(setProjects, setError, setLoading);
-  }, []);
-
   const onCreate = (e: FormEvent): void => {
     e.preventDefault();
-    runCreateProject({ name, workspaceRoot }, () => runProjectsReload(setProjects, setError, setLoading), setError);
+    createM.mutate({ name, workspaceRoot });
   };
 
   const setCurrent = (projectId: string): void => {
@@ -45,8 +54,8 @@ export const ProjectsPage = () => {
           type="button"
           variant="soft"
           color="gray"
-          onClick={() => runProjectsReload(setProjects, setError, setLoading)}
-          disabled={loading}
+          onClick={() => void projectsQ.refetch()}
+          disabled={projectsQ.isFetching}
         >
           刷新
         </Button>
@@ -79,7 +88,9 @@ export const ProjectsPage = () => {
                   onChange={(evt) => setWorkspaceRoot(evt.target.value)}
                 />
               </Flex>
-              <Button type="submit">创建</Button>
+              <Button type="submit" disabled={createM.isPending}>
+                {createM.isPending ? "创建中…" : "创建"}
+              </Button>
             </Flex>
           </form>
         </Flex>
@@ -108,7 +119,7 @@ export const ProjectsPage = () => {
                   <Table.Row>
                     <Table.Cell colSpan={3}>
                       <Text color="gray" size="2" highContrast={false}>
-                        {loading ? "加载中…" : "暂无项目"}
+                        {projectsQ.isPending ? "加载中…" : "暂无项目"}
                       </Text>
                     </Table.Cell>
                   </Table.Row>

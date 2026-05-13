@@ -1,27 +1,18 @@
-import { useEffect, useState } from "react";
 import { Box, Button, Callout, Card, Flex, Heading, Text, TextField } from "@radix-ui/themes";
-import { ApiError, getApiBase, fetchMe } from "@/api";
-import type { IAuthUser } from "@/auth";
+import { ApiError, getApiBase } from "@/api";
 import { useAuth } from "@/auth";
+import { useMeQuery } from "@/hooks";
 
 export const SettingsPage = () => {
   const { user, clearSession } = useAuth();
-  const [me, setMe] = useState<IAuthUser | null>(user);
-  const [error, setError] = useState<string | null>(null);
+  const meQ = useMeQuery();
+  const displayUser = meQ.data?.user ?? user;
 
-  useEffect(() => {
-    setMe(user);
-  }, [user]);
-
-  const onRefreshProfile = (): void => {
-    setError(null);
-    void fetchMe()
-      .then((res) => setMe(res.user))
-      .catch((err: unknown) => {
-        const msg = err instanceof ApiError ? err.message : "Failed to load profile";
-        setError(msg);
-      });
-  };
+  const profileError = meQ.isError
+    ? meQ.error instanceof ApiError
+      ? meQ.error.message
+      : "Failed to load profile"
+    : null;
 
   return (
     <Flex direction="column" gap="5">
@@ -34,9 +25,9 @@ export const SettingsPage = () => {
         </Text>
       </Box>
 
-      {error ? (
+      {profileError ? (
         <Callout.Root color="red" role="alert">
-          <Callout.Text>{error}</Callout.Text>
+          <Callout.Text>{profileError}</Callout.Text>
         </Callout.Root>
       ) : null}
 
@@ -49,8 +40,14 @@ export const SettingsPage = () => {
             </Text>
             <TextField.Root id="vite-api-base" readOnly value={getApiBase()} />
           </Flex>
-          <Button type="button" variant="soft" color="gray" onClick={onRefreshProfile}>
-            刷新用户信息
+          <Button
+            type="button"
+            variant="soft"
+            color="gray"
+            onClick={() => void meQ.refetch()}
+            disabled={meQ.isFetching}
+          >
+            {meQ.isFetching ? "刷新中…" : "刷新用户信息"}
           </Button>
         </Flex>
       </Card>
@@ -63,7 +60,7 @@ export const SettingsPage = () => {
               邮箱
             </Text>
             <Text size="3" style={{ fontFamily: "var(--mono-font-family, ui-monospace)" }}>
-              {me?.email ?? "—"}
+              {displayUser?.email ?? "—"}
             </Text>
           </Box>
           <Box>
@@ -71,7 +68,7 @@ export const SettingsPage = () => {
               内部 userId
             </Text>
             <Text size="3" style={{ fontFamily: "var(--mono-font-family, ui-monospace)" }}>
-              {me?.id ?? "—"}
+              {displayUser?.id ?? "—"}
             </Text>
           </Box>
 
