@@ -1,0 +1,47 @@
+---
+description: apps/api（Express）目录职责、请求链路与扩展方式
+globs: apps/api/**/*.ts
+alwaysApply: false
+---
+
+# apps/api 结构与分层
+
+本服务为 **Express** 应用：入口 **`src/index.ts`** 调 **`src/server.ts`** 的 `createApp` / `startServer`；队列消费见 **`src/worker.ts`**。安全头在 **`server.ts`** 使用 **helmet**，CORS 与 JSON 限额在同文件配置。
+
+## 请求链路（当前仓库形态）
+
+1. **`src/routes/*.ts`**：定义 `Router`、HTTP 方法、路径；**入参校验（如 zod）**、鉴权中间件、`HttpError` 处理与对 **Prisma / Redis / 队列** 的调用**可直接在本文件或抽到同目录 helper**；当前**无**独立 `controllers/`、`services/` 目录。
+2. **`src/middleware/`**：Express 中间件——如 `requireUser`、`requireRunner`、`errorHandler`、`httpLog`、`trace`；在路由或 `createApp` 中组合。
+3. **`src/lib/`**：可复用基础设施：**Prisma 客户端**、**Redis**、**JWT**、**密码哈希**、**HttpError**、Runner 在线/凭证等；**不写**具体某条 HTTP 路由的拼装，业务编排放在 `routes`（或后续若引入 `services/` 再下沉）。
+
+**只读聚合**（多表读、DTO 拼装）：在**单一路由处理函数**或后续抽成的函数内完成；优先 **一次/有限次查询** 与 **无 N+1 循环**（见数据访问规则）。**多表写入**应用 **Prisma `$transaction`** 在同一逻辑单元内完成。
+
+后台任务与队列：**`src/jobs/`**（如 `processAgentTask`）、**`src/queue/`**（如 `agentQueue`）；由 **`worker.ts`** 消费，避免在 HTTP 进程里跑长耗时循环。
+
+## 目录职责（与当前仓库一致）
+
+| 目录 | 职责 |
+|------|------|
+| **`src/config/`** | 环境与服务配置（如 `env.ts` 集中读 `process.env` 并校验）。 |
+| **`src/lib/`** | DB/缓存客户端与领域无关工具（Prisma、Redis、JWT、httpError 等）。 |
+| **`src/middleware/`** | Express 中间件（鉴权、日志、错误、trace）。 |
+| **`src/routes/`** | 各资源路由模块：`auth`、`projects`、`tasks`、`runners`、`runnerV1`、`health`、`ready`、`dev` 等。 |
+| **`src/jobs/`** | 队列/异步任务处理逻辑。 |
+| **`src/queue/`** | BullMQ 等队列定义与封装。 |
+| **`src/types/`** | 类型补充（如 `express.d.ts` 扩展）。 |
+| **`src/server.ts`** | 组装中间件、挂载全部路由、`errorHandler`。 |
+| **`src/index.ts`** | HTTP 进程入口。 |
+| **`src/worker.ts`** | Worker 进程入口。 |
+| **`prisma/`** | `schema.prisma`、迁移与 seed。 |
+
+## `import` 说明
+
+- 本仓库服务端源码普遍使用**相对路径** + 编译后的 **`.js` 后缀**（如 `from "./config/env.js"`），与 `tsconfig` / Node ESM 一致；若后续为 `apps/api` 配置路径别名，再统一「从目录 barrel 引入」即可。
+- **`@/…` barrel**：当前 **`apps/api` 无**统一 `src/index` 聚合业务导出；新增跨路由复用的纯函数可放 **`lib/`**，避免在路由文件间循环依赖。
+
+## 新增功能时的习惯
+
+- **新路由**：在 `src/routes/` 新增 `*.ts`（或按需要子目录），在 **`src/server.ts`** 的 `createApp` 里 `app.use(...)` 挂载；敏感操作配好 `requireUser` / `requireRunner` 等。
+- **新配置**：在 `src/config/` 增加模块，并从 `getEnv()` 或统一 config 出口读取；密钥只走环境变量（见 `env-secrets`）。
+- **与 `apps/web` 契约**：REST 路径、状态码、错误体形状与前端 `src/api/client.ts` 保持一致。
+- 可抽离到 monorepo 的多应用共用能力，遵循根目录 **`packages/`** 约定。

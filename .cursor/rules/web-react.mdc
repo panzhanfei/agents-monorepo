@@ -1,0 +1,45 @@
+---
+description: apps/web（Vite SPA）目录职责与前端约定
+globs: apps/web/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# apps/web 结构与分层
+
+本应用为 **Vite + React SPA**（见 `index.html`、`vite.config.ts`、`src/main.tsx`）。**无 RSC**：优化重心在客户端包体、路由拆分与渲染性能。
+
+## 技术栈与优化（编码向）
+
+| 优先级 | 方向 | 说明 |
+|--------|------|------|
+| **高** | **路由 / 重模块懒加载** | 页面与大依赖可用 `React.lazy` + `Suspense`，控制首包；错误与加载态清晰。 |
+| **高** | **长列表** | 任务列表等可能变长时，考虑虚拟列表或分页；避免一次渲染极大量 DOM。 |
+| **中** | **`useTransition` / `startTransition`** | 筛选、排序、切 Tab 等非紧急更新可标为 transition，减轻输入卡顿。 |
+| **中** | **`useDeferredValue`** | 搜索框 + 重子树时，可用延迟值降低昂贵列表更新频率。 |
+| **低** | **`ref` 回调与清理** | React 19 起 ref 回调可返回清理函数，可减少部分 `useEffect` 订阅样板。 |
+
+认证与用户态以 `src/auth/AuthContext.tsx` 为准；受保护路由用 `src/routes/Protected.tsx`。
+
+## 目录职责（与当前仓库一致）
+
+| 路径 | 职责 |
+|------|------|
+| **`src/App.tsx`** | 根组件与**应用内路由/布局**；保持精简，具体页面在 `pages/`。 |
+| **`src/pages/`** | **页面级路由目标**：如登录、注册、项目列表、任务、Runner 注册、设置等；按业务可再分子目录。 |
+| **`src/routes/`** | 路由相关包装（如鉴权守卫 `Protected.tsx`），不放具体业务页面 UI。 |
+| **`src/auth/`** | 登录态、`AuthContext` 等与认证相关的 React 代码。 |
+| **`src/api/`** | **HTTP 客户端、API 基址与请求封装**（如 `client.ts`）；页面只调用封装，避免散落裸 `fetch`。 |
+| **`src/assets/`** | 静态资源（图片、SVG 等）。 |
+| **`src/main.tsx`** | 入口：挂载根、`BrowserRouter` 等全局包装。 |
+
+以下目录**当前仓库未建**：若需要再引入，与根目录「项目约定」一致即可：
+
+- **`src/components/`**：可复用 UI；复杂组件可同目录 `interface.ts`。
+- **`src/hooks/`**、**`src/utils/`**、**`src/constants/`**、**`src/types/`**：跨页面 hooks、纯函数、常量、类型。
+
+## 协作约定
+
+- 新增页面：在 `src/pages/` 增加组件，在 `App.tsx`（或统一路由表）注册路径；需登录的路由用 `Protected` 等现有模式包裹。
+- API 与后端 **`apps/api`** 对齐：类型与路径以实际路由为准；敏感配置只走环境变量（见 `env-secrets` 规则）。
+- 多应用共享逻辑上浮至 **`packages/`**（见根目录「项目约定」）。
+- **聚合导出**：某目录下多个模块被多处引用时，可维护该目录 `index.ts`；当前 `apps/web` 体量较小时可按需添加，避免空 barrel。

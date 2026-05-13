@@ -1,49 +1,67 @@
 ---
-description: TS 风格、interface.ts 与 I 前缀类型命名、聚合导出、packages、新增能力前先查复用（对齐 sentinel-monorepo 约定）
+description: TS 风格、interface.ts 与 I 前缀类型命名、聚合导出、packages、新增业务前先查复用
 alwaysApply: true
 ---
 
-# 项目约定（agents-monorepo）
+# 项目约定
 
 ## TypeScript 与函数风格
 
-- 默认使用**箭头函数**编写模块级函数；仅当框架必须用 `function` 时再使用。
-- **导出 API**、**对外 props**、**hook 返回值**与边界载荷写**显式类型**；避免 `any`，必要时 `unknown` 再收窄。
-- 局部可从字面量明显推断时可依赖推断；**边界处**仍写清类型。
+- 默认使用**箭头函数**编写组件、hooks、工具函数与模块级函数；仅当框架或场景必须用 `function` 声明时（例如部分生成器、依赖提升等）再使用 `function`。
+- 对**导出 API**、**对外 props**、**hook 返回值**，以及含义不直观的参数/返回值，使用**显式类型**。避免 `any`；需要时用 `unknown` 再收窄。
+- 局部若类型可从字面量或泛型明显推断（如 `const n = 1`），可依赖推断；但在**边界处**（导出、props、RPC 载荷等）仍应写清类型。
+
+```typescript
+// 推荐
+export const buildUser = (id: string): User | null => { ... };
+
+// 新代码中尽量避免
+export function buildUser(id: string) { ... }
+```
 
 ## 不在自定义函数内再声明函数
 
-- 业务代码中不要在函数内部再声明长的嵌套子函数（不利于测试与复用）。
-- **例外**：框架回调、`map`/`then` 一行级短回调；体积大则外提成模块级具名函数或工厂文件。
+- 业务代码、路由处理函数、服务方法等**自写逻辑**中：不要在函数内部再 `function foo() {}` 或 `const foo = () => {}` 声明**嵌套子函数**（易拉长作用域、不利单测与复用）。
+- **例外**（可保留内层函数或回调）：
+  - **框架/库约定**的 API：如 React 的 `useState`/`useEffect`、各 UI 库传入的 `render`/`children` 工厂等。
+  - **原生高阶**用法：`array.map((x) => ...)`、`.then(...)` 等**无法外提**的一行级回调，宜保持极短；若体量大则**外提成模块级**具名函数或**工厂**（如 `createXxxPublish(args)` 放在同 feature 的独立文件）。
+- 需要「请求级闭包」时，优先**模块内工厂**（如 `createChatSsePublish`）在**子文件**返回具名能力，**不在** 200 行的 handler 里长嵌套。
 
 ## 类型拆分与 `interface.ts`
 
-- 声明累积较多行时抽到同 feature 的 **`interface.ts`**。
-- **命名**：对外接口与对象类型 **`I` + PascalCase**（如 `IOrchestratorContext`）。
-- **导出**：`export interface I...` / `export type`，业务文件 `import type`。
+- 当**组件 props**、**hook 入参/返回值**、**方法参数与返回**、**视图/表格行数据**等 TypeScript 声明**累计较多行**（大致 ≥ ~30 行或单文件可读性明显下降）时：将具名类型抽到**同 feature 目录**下的 **`interface.ts`**（与仓库中 `components/.../interface.ts` 模式一致），主文件只保留实现与必要的窄类型。
+- **文件名**：优先使用 **`interface.ts`**；同一目录若需区分「仅类型」与「运行时常量」，可保留 `constants.ts` 等，但**不要**把大段接口堆回业务文件。
+- **命名**：对外使用的**接口与具名对象类型**统一 **`I` + PascalCase**，名称与对应**组件 / hook / 方法 / 领域数据**的英文含义一致（取整体概念的首段 PascalCase，而非单词首字母缩写）。
+  - 组件 `AgentTerminal` 的 props → `IAgentTerminalProps`
+  - 列表行「审计足迹」→ `IFootprintRow` 或 `IAuditFootprintRow`
+  - 函数 `mergeChatHistory` 的入参/出参 → `IMergeChatHistoryParams`、`IMergeChatHistoryResult`
+  - API / BFF 响应体 → `IChatSessionResponse` 等
+- **导出**：在 `interface.ts` 内 `export interface I...` 或 `export type I...`（对象形状、联合等具名类型）；业务文件 `import type { ... } from "./interface"`。
+- **渐进迁移**：历史文件若无 `I` 前缀，**新改动的导出类型**优先按本规则命名；不必为纯重构一次性改全仓库。
 
-## 新增能力：先查复用再实现
+## 新增业务：先查复用再实现
 
-- **编排与流水线**：跨通道（飞书 / Git / CI）的共享逻辑放在 **`packages/pipeline-core`** 或后续新增 **`packages/*`**，不要在多个 `apps/*` 复制。
-- **HTTP 编排入口**：`apps/orchestrator` 负责飞书/Webhook、任务状态与调用各 **Agent**（`requirements-agent`、`coding-agent`、`review-agent`、`test-agent`、`ops-agent`）；**不要**把编码/审核/测试执行/发布细节堆在 orchestrator，应分别落在对应 `apps/*` 或 `packages/*`。
-- **运行时 Skill 分层**（`implementationRole` / `stackProfile` / `opsMode` 等）：契约在 **`packages/pipeline-core`**，编排校验与透传在 **`apps/orchestrator`**，消费逻辑在各 **`apps/*-agent`**；约定见 **`runtime-skills-layering.mdc`** 与 **`docs/ARCHITECTURE.md` §15**。
+- **API 与 DTO**：**合并、清洗、多数据源拼装** 优先在 **`apps/api`** 的**用例级路由/模块**（或未来的 `services/`）中完成；**`apps/web`** 经 **`src/api/`** 调用并做**轻量映射**即可。
+- **每次新增业务**（新页面、新接口、新 hook、新组件）在落代码前：在 monorepo 内**检索是否已有**同类能力——**`apps/web`** 的 `pages` / `hooks` / `components` / `api`，**`apps/api`** 的 `routes` / `lib` / `jobs`，以及 **`packages/*`**（若已建：`ui`、`auth`、`database` 等）。
+- 若存在**语义接近、边界清晰、可参数化**的实现：优先**复用**；若两处已出现重复或第三处将复制：评估**抽离**——组件/hook 上浮到 **`packages/ui`** 或当前应用内更高层 `components` / `hooks`；纯函数进 `utils` 或 **`packages`** 下合适包。
+- 避免在多个 `apps/*` 各写一套「只差配置」的拷贝；跨应用共性必须符合上文 **`packages/`** 约定。
 
-## Monorepo：共享能力放在 `packages/`
+## Monorepo：共享服务放在 `packages/`
 
-- 多应用或多 Job 共用的类型、客户端封装、门禁适配器放在 **`packages/<包名>/`**。
-- 应用通过 workspace 依赖引用。
+- 具有**共享服务能力**的模块（数据访问、外部 API、鉴权辅助、缓存、「数据库」层、跨应用业务逻辑等）应放在 **`packages/<包名>/`**，不要在多个 `apps/*` 中重复实现。
+- 应用通过 **workspace 依赖**引用这些包；应用代码侧重 UI、路由与组装。
+- 新增共享服务包时：遵循本仓库已有包的目录与构建方式（构建工具、`package.json` 的 `exports`、tsconfig 引用等）。
 
 ## 聚合导出（`index.ts` / barrel）
 
-- 新增对外 API 时在对应层级维护 **`index.ts`** 聚合导出。
-- **测试文件**不要进业务 barrel。
-- **`packages/*`**：遵循各包 `package.json` `exports`。
+- 新增**对外可用的**方法、配置项、路由挂载、通用组件、自定义 hook、store 模块等时：在**对应层级**维护 **`index.ts`**，把本目录（或约定好的子域）的公开 API **集中再导出**，便于统一 import 路径与代码评审。
+- **import 路径**：若某应用为 `src` 配置了 **`@/…`** 且某级目录已有 **barrel**（`index.ts`），业务代码优先从**该目录**引入。**`apps/api`** 当前以**相对路径**为主（含编译用 `.js` 后缀），与现有 `server.ts`、`routes` 一致。**同目录**实现文件之间可优先**相对路径**，避免经 barrel 自引用死循环。
+- **例外**：若某应用存在「**单文件**与**同名目录**」并列（如 `proxy.ts` 与 `proxy/`），解析器可能优先解析文件；按需使用子路径或目录内相对 import，避免误指向。
+- **范围**：同一目录下多个文件且会被其他目录引用时，优先 `export { ... } from './foo'`；**仅内部使用**的实现细节可不写入 barrel。
+- **不要进 barrel**：**仅供测试**的模块（例如测试专用 helper、fixture、mock）**不要**写入业务用的 `index.ts`，避免生产/库入口误带出测试代码；从测试文件直接按路径 `import` 即可。
+- **测试文件除外**：文件名含 `.test.` / `.spec.` 的测试文件，以及 `__tests__/` 下文件，**不要求**、也**通常不应**被 `index.ts` 再导出；barrel 只面向运行时与对外 API。
+- **配置**：新配置除单独导出外，尽量在应用约定的聚合处汇总（如 **`apps/api`** 当前以 `src/config/env.ts` 为主）；避免业务侧散落深层路径。
+- **路由（后端）**：**`apps/api`** 新路由须在 **`src/server.ts`** 的 `createApp` 中挂载（若将来引入 `routes/index.ts` 再集中导出亦可）。
+- **`packages/*`**：遵循各包入口与 `package.json` `exports`，公开符号从包根或 `src/index.ts` 统一导出。
 
-## 改完代码后必须自测（再收口给用户）
-
-- **本仓内**：对改动的包至少跑 **`pnpm --filter <包名> test`** 与包内 **`tsc --noEmit`**（或 `turbo run check-types`，若你为某包配置了该脚本）；动到 **`pnpm dev` / 端口 / Turbo 与多 app 启动** 时，再跑一轮 **`pnpm exec turbo run dev`**（短时、无 ngrok）做冒烟，确认无 **`EADDRINUSE`**、关键 **`/health`** 可访问；**未跑通不得**对用户说「已好 / 没问题」。
-- **飞书 Webhook / 编排飞书链路**：收口前跑一次 **`pnpm verify:feishu`**；若改需求分析下游可 **`SMOKE_REQUIREMENTS_FULL=1 ... pnpm verify:feishu`**。
-- **全项目流转日志（第二终端）**：开发环境各服务默认把 JSON 日志写入仓库 **`logs/<service>.log`**（可通过 **`AGENTS_LOG_DIR`** 改路，**`AGENTS_LOG_DISABLE=1`** 关闭）。另开终端运行 **`pnpm logs`** 即 **`tail -f` 聚合**这些文件；**未跑 dev 时** `pnpm logs` 会等待进程创建日志。
-- **环境所限**（如无终端、沙箱不能起服务）时：**明说**未跑哪一步、用户本地需补跑什么命令。
-
-各应用细则见：`orchestrator-app.mdc`、`requirements-agent-app.mdc`、`coding-agent-app.mdc`、`review-agent-app.mdc`、`test-agent-app.mdc`、`ops-agent-app.mdc`、`pipeline-packages.mdc`、`runtime-skills-layering.mdc`。
+**`apps/web`** 以 `.cursor/rules/web-react.mdc` 为准；**`apps/api`** 以 `.cursor/rules/api-node.mdc` 为准。
