@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { Worker } from "bullmq";
 import { getEnv } from "@/config";
 import { getRedis, closeRedis, prisma } from "@/lib";

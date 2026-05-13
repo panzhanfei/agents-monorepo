@@ -1,7 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { Button, Callout, Flex, TextField } from "@radix-ui/themes";
 import { Link, useNavigate } from "react-router-dom";
 import { ApiError, postRegister } from "@/api";
 import { useAuth } from "@/auth";
+import { AuthScreen } from "./AuthScreen";
 
 export const RegisterPage = () => {
   const navigate = useNavigate();
@@ -32,39 +34,55 @@ export const RegisterPage = () => {
   };
 
   return (
-    <div className="page">
-      <div className="panel stack" style={{ maxWidth: 520 }}>
-        <div>
-          <h2 style={{ margin: "0 0 0.25rem" }}>注册</h2>
-          <div className="muted">密码至少 8 位。</div>
-        </div>
+    <AuthScreen title="注册" subtitle="密码至少 8 位，即刻开始协作">
+      {error ? (
+        <Callout.Root color="red" role="alert" className="auth-screen__error">
+          <Callout.Text>{error}</Callout.Text>
+        </Callout.Root>
+      ) : null}
 
-        {error ? <div className="errorBox">{error}</div> : null}
-
-        <form className="stack" onSubmit={onSubmit}>
-          <label className="field">
-            <div className="fieldLabel">邮箱</div>
-            <input value={email} onChange={(evt) => setEmail(evt.target.value)} autoComplete="email" />
-          </label>
-          <label className="field">
-            <div className="fieldLabel">密码</div>
-            <input
+      <form onSubmit={onSubmit}>
+        <Flex direction="column" gap="4">
+          <div className="auth-field">
+            <label className="auth-field-label" htmlFor="register-email">
+              邮箱
+            </label>
+            <TextField.Root
+              id="register-email"
+              size="3"
+              variant="surface"
+              type="email"
+              value={email}
+              onChange={(evt) => setEmail(evt.target.value)}
+              autoComplete="email"
+              placeholder="you@company.com"
+            />
+          </div>
+          <div className="auth-field">
+            <label className="auth-field-label" htmlFor="register-password">
+              密码
+            </label>
+            <TextField.Root
+              id="register-password"
+              size="3"
+              variant="surface"
               type="password"
               value={password}
               onChange={(evt) => setPassword(evt.target.value)}
               autoComplete="new-password"
+              placeholder="至少 8 位"
             />
-          </label>
-          <div className="row">
-            <button type="submit" disabled={loading}>
-              {loading ? "提交中…" : "创建账号"}
-            </button>
-            <Link className="muted" to="/login">
-              已有账号？登录
-            </Link>
           </div>
-        </form>
-      </div>
-    </div>
+          <Flex direction="column" gap="2" mt="2">
+            <Button type="submit" size="3" disabled={loading} className="auth-submit">
+              {loading ? "创建中…" : "创建并登录"}
+            </Button>
+            <Button variant="ghost" color="gray" size="3" asChild className="auth-alt-link">
+              <Link to="/login">已有账号？去登录</Link>
+            </Button>
+          </Flex>
+        </Flex>
+      </form>
+    </AuthScreen>
   );
 };

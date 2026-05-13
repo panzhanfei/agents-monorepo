@@ -1,5 +1,21 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { Link, useParams } from "react-router-dom";
+import {
+  Box,
+  Button,
+  Callout,
+  Card,
+  Code,
+  Flex,
+  Heading,
+  Link,
+  Select,
+  Strong,
+  Table,
+  Text,
+  TextArea,
+  TextField,
+} from "@radix-ui/themes";
+import { Link as RouterLink, useParams } from "react-router-dom";
 import type { IRunnerRow, ITaskRow } from "@/api";
 import { runEnqueueTask, runReloadProjectTasksLists, subscribeTaskDetailPolling } from "@/utils";
 
@@ -65,20 +81,31 @@ export const ProjectTasksPage = () => {
   };
 
   return (
-    <div className="page stack">
-      <div className="row" style={{ justifyContent: "space-between" }}>
-        <div>
-          <h2 style={{ margin: 0 }}>任务</h2>
-          <div className="muted">
-            项目：<span className="mono">{projectId}</span> ·{" "}
-            <Link className="muted" to="/projects">
-              返回项目
+    <Flex direction="column" gap="5">
+      <Flex align="start" justify="between" gap="4" wrap="wrap">
+        <Box>
+          <Heading size="6" mb="1">
+            任务
+          </Heading>
+          <Flex align="center" gap="2" wrap="wrap">
+            <Text color="gray" size="2" highContrast={false}>
+              项目：
+            </Text>
+            <Code size="2" variant="soft">
+              {projectId}
+            </Code>
+            <Text color="gray" size="2" highContrast={false}>
+              ·
+            </Text>
+            <Link size="2" asChild>
+              <RouterLink to="/projects">返回项目</RouterLink>
             </Link>
-          </div>
-        </div>
-        <button
+          </Flex>
+        </Box>
+        <Button
           type="button"
-          className="secondary"
+          variant="soft"
+          color="gray"
           onClick={() =>
             runReloadProjectTasksLists({
               projectId,
@@ -91,114 +118,156 @@ export const ProjectTasksPage = () => {
           }
         >
           刷新列表
-        </button>
-      </div>
+        </Button>
+      </Flex>
 
-      {error ? <div className="errorBox">{error}</div> : null}
+      {error ? (
+        <Callout.Root color="red" role="alert">
+          <Callout.Text>{error}</Callout.Text>
+        </Callout.Root>
+      ) : null}
 
-      <div className="panel stack">
-        <h3 style={{ margin: 0 }}>入队</h3>
-        <div className="muted">
-          enqueue 会校验 Runner <strong>心跳在线</strong>。本地验收：先到 Runner 页面点心跳，再回到此处。
-        </div>
+      <Card size="2">
+        <Flex direction="column" gap="4">
+          <Heading size="4">入队</Heading>
+          <Text color="gray" size="2" highContrast={false}>
+            enqueue 会校验 Runner <Strong>心跳在线</Strong>。本地验收：先到 Runner 页面点心跳，再回到此处。
+          </Text>
 
-        <form className="stack" onSubmit={onEnqueue}>
-          <label className="field">
-            <div className="fieldLabel">Runner</div>
-            <select value={runnerDeviceId} onChange={(evt) => setRunnerDeviceId(evt.target.value)}>
-              {runners.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {(r.displayName ?? r.deviceKey).slice(0, 48)}
-                </option>
-              ))}
-            </select>
-          </label>
+          <form onSubmit={onEnqueue}>
+            <Flex direction="column" gap="3">
+              <Flex direction="column" gap="1">
+                <Text as="div" size="2" weight="medium">
+                  Runner
+                </Text>
+                <Select.Root value={runnerDeviceId} onValueChange={setRunnerDeviceId} disabled={runners.length === 0}>
+                  <Select.Trigger placeholder={runners.length === 0 ? "暂无 Runner" : "选择 Runner"} />
+                  <Select.Content>
+                    {runners.map((r) => (
+                      <Select.Item key={r.id} value={r.id}>
+                        {(r.displayName ?? r.deviceKey).slice(0, 48)}
+                      </Select.Item>
+                    ))}
+                  </Select.Content>
+                </Select.Root>
+              </Flex>
 
-          <div className="row">
-            <div className={`callout ${selectedRunnerOnline ? "" : "muted"}`} style={{ flex: 1 }}>
-              Runner 心跳提示：{selectedRunnerOnline ? "近期有心跳（粗略判断）" : "可能离线（请先心跳）"}
-            </div>
-          </div>
+              <Callout.Root color={selectedRunnerOnline ? "blue" : "gray"}>
+                <Callout.Text size="2">
+                  Runner 心跳提示：{selectedRunnerOnline ? "近期有心跳（粗略判断）" : "可能离线（请先心跳）"}
+                </Callout.Text>
+              </Callout.Root>
 
-          <label className="field">
-            <div className="fieldLabel">payload（JSON）</div>
-            <textarea rows={8} value={payloadText} onChange={(evt) => setPayloadText(evt.target.value)} />
-          </label>
+              <Flex direction="column" gap="1">
+                <Text as="label" htmlFor="task-payload" size="2" weight="medium">
+                  payload（JSON）
+                </Text>
+                <TextArea id="task-payload" rows={8} value={payloadText} onChange={(evt) => setPayloadText(evt.target.value)} />
+              </Flex>
 
-          <div className="row">
-            <button type="submit">enqueue</button>
-          </div>
-        </form>
-      </div>
+              <Button type="submit">enqueue</Button>
+            </Flex>
+          </form>
+        </Flex>
+      </Card>
 
-      <div className="panel stack">
-        <div className="row" style={{ justifyContent: "space-between" }}>
-          <h3 style={{ margin: 0 }}>列表（轮询占位）</h3>
-          <label className="row" style={{ gap: "0.5rem" }}>
-            <span className="muted">间隔 ms</span>
-            <input
-              style={{ width: 120 }}
-              type="number"
-              min={500}
-              step={100}
-              value={pollMs}
-              onChange={(evt) => setPollMs(Number(evt.target.value))}
-            />
-          </label>
-        </div>
+      <Card size="2">
+        <Flex direction="column" gap="4">
+          <Flex align="center" justify="between" gap="3" wrap="wrap">
+            <Heading size="4">列表（轮询占位）</Heading>
+            <Flex align="center" gap="2" wrap="wrap">
+              <Text color="gray" size="2" highContrast={false}>
+                间隔 ms
+              </Text>
+              <TextField.Root
+                style={{ width: 120 }}
+                type="number"
+                min={500}
+                step={100}
+                value={String(pollMs)}
+                onChange={(evt) => setPollMs(Number(evt.target.value))}
+              />
+            </Flex>
+          </Flex>
 
-        <div style={{ overflowX: "auto" }}>
-          <table>
-            <thead>
-              <tr>
-                <th>状态</th>
-                <th>任务 ID</th>
-                <th>Runner</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {tasks.map((t) => (
-                <tr key={t.id}>
-                  <td>{t.status}</td>
-                  <td className="mono">{t.id}</td>
-                  <td className="mono">{t.runnerDeviceId}</td>
-                  <td>
-                    <button type="button" className="secondary" onClick={() => setSelectedTaskId(t.id)}>
-                      详情
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {tasks.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="muted">
-                    暂无任务
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
-      </div>
+          <Box style={{ overflowX: "auto" }}>
+            <Table.Root variant="surface">
+              <Table.Header>
+                <Table.Row>
+                  <Table.ColumnHeaderCell>状态</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>任务 ID</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Runner</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell width="120px" justify="end" />
+                </Table.Row>
+              </Table.Header>
+              <Table.Body>
+                {tasks.length === 0 ? (
+                  <Table.Row>
+                    <Table.Cell colSpan={4}>
+                      <Text color="gray" size="2" highContrast={false}>
+                        暂无任务
+                      </Text>
+                    </Table.Cell>
+                  </Table.Row>
+                ) : (
+                  tasks.map((t) => (
+                    <Table.Row key={t.id}>
+                      <Table.Cell>{t.status}</Table.Cell>
+                      <Table.Cell>
+                        <Text size="2" style={{ fontFamily: "var(--mono-font-family, ui-monospace)" }} wrap="pretty">
+                          {t.id}
+                        </Text>
+                      </Table.Cell>
+                      <Table.Cell>
+                        <Text size="2" style={{ fontFamily: "var(--mono-font-family, ui-monospace)" }} wrap="pretty">
+                          {t.runnerDeviceId}
+                        </Text>
+                      </Table.Cell>
+                      <Table.Cell justify="end">
+                        <Button type="button" variant="soft" color="gray" size="1" onClick={() => setSelectedTaskId(t.id)}>
+                          详情
+                        </Button>
+                      </Table.Cell>
+                    </Table.Row>
+                  ))
+                )}
+              </Table.Body>
+            </Table.Root>
+          </Box>
+        </Flex>
+      </Card>
 
       {selectedTaskId ? (
-        <div className="panel stack">
-          <div className="row" style={{ justifyContent: "space-between" }}>
-            <h3 style={{ margin: 0 }}>详情</h3>
-            <button type="button" className="secondary" onClick={() => setSelectedTaskId(null)}>
-              关闭
-            </button>
-          </div>
-          {detail ? (
-            <pre className="mono" style={{ margin: 0, whiteSpace: "pre-wrap" }}>
-              {JSON.stringify(detail, null, 2)}
-            </pre>
-          ) : (
-            <div className="muted">加载中…</div>
-          )}
-        </div>
+        <Card size="2">
+          <Flex direction="column" gap="3">
+            <Flex align="center" justify="between" gap="3" wrap="wrap">
+              <Heading size="4">详情</Heading>
+              <Button type="button" variant="soft" color="gray" onClick={() => setSelectedTaskId(null)}>
+                关闭
+              </Button>
+            </Flex>
+            {detail ? (
+              <Box
+                p="3"
+                style={{
+                  borderRadius: "var(--radius-3)",
+                  background: "var(--gray-a3)",
+                  fontFamily: "var(--mono-font-family, ui-monospace)",
+                  fontSize: "var(--font-size-2)",
+                  whiteSpace: "pre-wrap",
+                  margin: 0,
+                }}
+              >
+                {JSON.stringify(detail, null, 2)}
+              </Box>
+            ) : (
+              <Text color="gray" size="2" highContrast={false}>
+                加载中…
+              </Text>
+            )}
+          </Flex>
+        </Card>
       ) : null}
-    </div>
+    </Flex>
   );
 };

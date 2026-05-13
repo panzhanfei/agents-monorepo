@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { Box, Button, Callout, Card, Flex, Heading, Link, Table, Text, TextField } from "@radix-ui/themes";
+import { Link as RouterLink } from "react-router-dom";
 import type { IProjectRow } from "@/api";
 import { readStoredProjectId, writeStoredProjectId } from "@/auth";
 import { runCreateProject, runProjectsReload } from "@/utils";
@@ -30,81 +31,116 @@ export const ProjectsPage = () => {
   };
 
   return (
-    <div className="page stack">
-      <div className="row" style={{ justifyContent: "space-between" }}>
-        <div>
-          <h2 style={{ margin: 0 }}>项目</h2>
-          <div className="muted">{hint}</div>
-        </div>
-        <button type="button" className="secondary" onClick={() => runProjectsReload(setProjects, setError, setLoading)} disabled={loading}>
+    <Flex direction="column" gap="5">
+      <Flex align="start" justify="between" gap="4" wrap="wrap">
+        <Box>
+          <Heading size="6" mb="1">
+            项目
+          </Heading>
+          <Text color="gray" size="2" highContrast={false}>
+            {hint}
+          </Text>
+        </Box>
+        <Button
+          type="button"
+          variant="soft"
+          color="gray"
+          onClick={() => runProjectsReload(setProjects, setError, setLoading)}
+          disabled={loading}
+        >
           刷新
-        </button>
-      </div>
+        </Button>
+      </Flex>
 
-      {error ? <div className="errorBox">{error}</div> : null}
+      {error ? (
+        <Callout.Root color="red" role="alert">
+          <Callout.Text>{error}</Callout.Text>
+        </Callout.Root>
+      ) : null}
 
-      <div className="panel stack">
-        <h3 style={{ margin: 0 }}>新建项目</h3>
-        <form className="stack" onSubmit={onCreate}>
-          <label className="field">
-            <div className="fieldLabel">名称</div>
-            <input value={name} onChange={(evt) => setName(evt.target.value)} />
-          </label>
-          <label className="field">
-            <div className="fieldLabel">workspaceRoot（登记路径）</div>
-            <input value={workspaceRoot} onChange={(evt) => setWorkspaceRoot(evt.target.value)} />
-          </label>
-          <div className="row">
-            <button type="submit">创建</button>
-          </div>
-        </form>
-      </div>
+      <Card size="2">
+        <Flex direction="column" gap="4">
+          <Heading size="4">新建项目</Heading>
+          <form onSubmit={onCreate}>
+            <Flex direction="column" gap="3">
+              <Flex direction="column" gap="1">
+                <Text as="label" htmlFor="project-name" size="2" weight="medium">
+                  名称
+                </Text>
+                <TextField.Root id="project-name" value={name} onChange={(evt) => setName(evt.target.value)} />
+              </Flex>
+              <Flex direction="column" gap="1">
+                <Text as="label" htmlFor="project-workspace" size="2" weight="medium">
+                  workspaceRoot（登记路径）
+                </Text>
+                <TextField.Root
+                  id="project-workspace"
+                  value={workspaceRoot}
+                  onChange={(evt) => setWorkspaceRoot(evt.target.value)}
+                />
+              </Flex>
+              <Button type="submit">创建</Button>
+            </Flex>
+          </form>
+        </Flex>
+      </Card>
 
-      <div className="panel stack">
-        <div className="row" style={{ justifyContent: "space-between" }}>
-          <h3 style={{ margin: 0 }}>列表</h3>
-          <Link className="muted" to="/runners">
-            Runner 注册向导 →
-          </Link>
-        </div>
+      <Card size="2">
+        <Flex direction="column" gap="4">
+          <Flex align="center" justify="between" gap="3" wrap="wrap">
+            <Heading size="4">列表</Heading>
+            <Link size="2" color="gray" asChild>
+              <RouterLink to="/runners">Runner 注册向导 →</RouterLink>
+            </Link>
+          </Flex>
 
-        <div style={{ overflowX: "auto" }}>
-          <table>
-            <thead>
-              <tr>
-                <th>名称</th>
-                <th>workspaceRoot</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {projects.map((p) => (
-                <tr key={p.id}>
-                  <td>{p.name}</td>
-                  <td className="mono">{p.workspaceRoot}</td>
-                  <td>
-                    <div className="row" style={{ justifyContent: "flex-end" }}>
-                      <button type="button" className="secondary" onClick={() => setCurrent(p.id)}>
-                        设为当前
-                      </button>
-                      <Link to={`/projects/${p.id}/tasks`}>
-                        <button type="button">任务</button>
-                      </Link>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {projects.length === 0 ? (
-                <tr>
-                  <td colSpan={3} className="muted">
-                    {loading ? "加载中…" : "暂无项目"}
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+          <Box style={{ overflowX: "auto" }}>
+            <Table.Root variant="surface">
+              <Table.Header>
+                <Table.Row>
+                  <Table.ColumnHeaderCell>名称</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>workspaceRoot</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell width="220px" justify="end" />
+                </Table.Row>
+              </Table.Header>
+              <Table.Body>
+                {projects.length === 0 ? (
+                  <Table.Row>
+                    <Table.Cell colSpan={3}>
+                      <Text color="gray" size="2" highContrast={false}>
+                        {loading ? "加载中…" : "暂无项目"}
+                      </Text>
+                    </Table.Cell>
+                  </Table.Row>
+                ) : (
+                  projects.map((p) => (
+                    <Table.Row key={p.id}>
+                      <Table.Cell>
+                        <Text weight="medium">{p.name}</Text>
+                      </Table.Cell>
+                      <Table.Cell>
+                        <Text size="2" style={{ fontFamily: "var(--mono-font-family, ui-monospace)" }} wrap="pretty">
+                          {p.workspaceRoot}
+                        </Text>
+                      </Table.Cell>
+                      <Table.Cell justify="end">
+                        <Flex gap="2" justify="end" wrap="wrap">
+                          <Button type="button" variant="soft" color="gray" size="1" onClick={() => setCurrent(p.id)}>
+                            设为当前
+                          </Button>
+                          <Button type="button" size="1" asChild>
+                            <RouterLink to={`/projects/${p.id}/tasks`}>任务</RouterLink>
+                          </Button>
+                        </Flex>
+                      </Table.Cell>
+                    </Table.Row>
+                  ))
+                )}
+              </Table.Body>
+            </Table.Root>
+          </Box>
+        </Flex>
+      </Card>
+    </Flex>
   );
 };

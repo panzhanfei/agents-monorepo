@@ -3,6 +3,7 @@
   "private": true,
   "packageManager": "pnpm@9.15.1",
   "scripts": {
+    "dev": "pnpm dev:api & pnpm dev:web",
     "dev:api": "pnpm --filter api dev",
     "dev:web": "pnpm --filter web dev",
     "worker:api": "pnpm --filter api worker",

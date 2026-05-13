@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { createServer } from "http";
 import { getEnv } from "@/config";
 import { createApp, gracefulShutdown } from "@/server";

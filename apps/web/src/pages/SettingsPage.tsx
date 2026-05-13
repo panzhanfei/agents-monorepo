@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Box, Button, Callout, Card, Flex, Heading, Text, TextField } from "@radix-ui/themes";
 import { ApiError, getApiBase, fetchMe } from "@/api";
 import type { IAuthUser } from "@/auth";
 import { useAuth } from "@/auth";
@@ -23,38 +24,62 @@ export const SettingsPage = () => {
   };
 
   return (
-    <div className="page stack">
-      <div>
-        <h2 style={{ margin: 0 }}>设置 / 关于</h2>
-        <div className="muted">第一期占位页：展示环境与当前用户信息。</div>
-      </div>
+    <Flex direction="column" gap="5">
+      <Box>
+        <Heading size="6" mb="1">
+          设置 / 关于
+        </Heading>
+        <Text color="gray" size="2" highContrast={false}>
+          第一期占位页：展示环境与当前用户信息。
+        </Text>
+      </Box>
 
-      {error ? <div className="errorBox">{error}</div> : null}
+      {error ? (
+        <Callout.Root color="red" role="alert">
+          <Callout.Text>{error}</Callout.Text>
+        </Callout.Root>
+      ) : null}
 
-      <div className="panel stack">
-        <h3 style={{ margin: 0 }}>前端环境</h3>
-        <div className="field">
-          <div className="fieldLabel">VITE_API_BASE</div>
-          <input readOnly value={getApiBase()} className="mono" />
-        </div>
-        <button type="button" className="secondary" onClick={onRefreshProfile}>
-          刷新用户信息
-        </button>
-      </div>
+      <Card size="2">
+        <Flex direction="column" gap="4">
+          <Heading size="4">前端环境</Heading>
+          <Flex direction="column" gap="1">
+            <Text as="label" htmlFor="vite-api-base" size="2" weight="medium">
+              VITE_API_BASE
+            </Text>
+            <TextField.Root id="vite-api-base" readOnly value={getApiBase()} />
+          </Flex>
+          <Button type="button" variant="soft" color="gray" onClick={onRefreshProfile}>
+            刷新用户信息
+          </Button>
+        </Flex>
+      </Card>
 
-      <div className="panel stack">
-        <h3 style={{ margin: 0 }}>账号</h3>
-        <div className="muted">邮箱</div>
-        <div className="mono">{me?.email ?? "—"}</div>
-        <div className="muted">内部 userId</div>
-        <div className="mono">{me?.id ?? "—"}</div>
+      <Card size="2">
+        <Flex direction="column" gap="4">
+          <Heading size="4">账号</Heading>
+          <Box>
+            <Text color="gray" size="2" highContrast={false}>
+              邮箱
+            </Text>
+            <Text size="3" style={{ fontFamily: "var(--mono-font-family, ui-monospace)" }}>
+              {me?.email ?? "—"}
+            </Text>
+          </Box>
+          <Box>
+            <Text color="gray" size="2" highContrast={false}>
+              内部 userId
+            </Text>
+            <Text size="3" style={{ fontFamily: "var(--mono-font-family, ui-monospace)" }}>
+              {me?.id ?? "—"}
+            </Text>
+          </Box>
 
-        <div className="row">
-          <button type="button" className="danger" onClick={() => clearSession()}>
+          <Button type="button" color="red" variant="soft" onClick={() => clearSession()}>
             退出登录
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </Flex>
+      </Card>
+    </Flex>
   );
 };

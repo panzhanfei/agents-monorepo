@@ -7,7 +7,11 @@ const envSchema = z.object({
   REDIS_URL: z.string().min(1),
   JWT_SECRET: z.string().min(16),
   JWT_ACCESS_EXPIRES_IN: z.string().default("15m"),
-  ALLOWED_ORIGINS: z.string().default("http://localhost:5173"),
+  ALLOWED_ORIGINS: z
+    .string()
+    .default(
+      "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5001,http://127.0.0.1:5001",
+    ),
   RUNNER_HEARTBEAT_TTL_SEC: z.coerce.number().int().positive().default(90),
   RUNNER_TASK_LEASE_SEC: z.coerce.number().int().positive().default(180),
   RUNNER_TASK_DISPATCH_MODE: z.enum(["db-only", "bullmq"]).default("db-only"),
