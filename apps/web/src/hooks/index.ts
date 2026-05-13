@@ -2,9 +2,16 @@ export {
   getMutationErrorMessage,
   useLoginMutation,
   useMeQuery,
+  usePatchAuthMeMutation,
   useRegisterMutation,
 } from "./auth";
-export { getProjectsMutationErrorMessage, useCreateProjectMutation, useProjectsListQuery } from "./projects";
+export {
+  getCreateProjectMutationErrorMessage,
+  getProjectsMutationErrorMessage,
+  useCreateProjectMutation,
+  useProjectsListQuery,
+  useUpdateProjectMutation,
+} from "./projects";
 export {
   getTasksMutationErrorMessage,
   useEnqueueTaskMutation,

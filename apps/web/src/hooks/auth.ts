@@ -1,6 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { ApiError, fetchMe, postLogin, postRegister, type ILoginBody } from "@/api";
+import type { IAuthPatchMeBody } from "@agents/shared-types";
+import { ApiError, fetchMe, patchAuthMe, postLogin, postRegister, type ILoginBody } from "@/api";
 import { useAuth } from "@/auth";
 import { queryKeys } from "@/query/keys";
 
@@ -43,6 +44,23 @@ export const useRegisterMutation = () => {
       void qc.invalidateQueries({ queryKey: queryKeys.auth.me });
       navigate("/projects", { replace: true });
     },
+  });
+};
+
+const createMePatchSuccess =
+  (qc: QueryClient, reloadProfile: () => Promise<void>) =>
+  async (): Promise<void> => {
+    void qc.invalidateQueries({ queryKey: queryKeys.auth.me });
+    await reloadProfile();
+  };
+
+export const usePatchAuthMeMutation = () => {
+  const qc = useQueryClient();
+  const { reloadProfile } = useAuth();
+
+  return useMutation({
+    mutationFn: (body: IAuthPatchMeBody) => patchAuthMe(body),
+    onSuccess: createMePatchSuccess(qc, reloadProfile),
   });
 };
 

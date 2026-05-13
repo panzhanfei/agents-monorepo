@@ -1,14 +1,25 @@
 export type {
+  IAgentInferenceMode,
+  IAgentInferencePublic,
+  IAgentSlotKey,
+  IAgentSlotPublic,
   IAuthUser,
+  IAuthInferenceTestBody,
+  IAuthInferenceTestProbe,
+  IAuthInferenceTestResponse,
   IAuthMeResponse,
+  IAuthPatchAgentSlotBody,
+  IAuthPatchMeBody,
   IAuthRefreshResponse,
   IAuthSessionResponse,
 } from "./auth";
+export { AGENT_SLOT_KEYS } from "./auth";
 export type {
   ICreateProjectBody,
   IProjectMutationResponse,
   IProjectRow,
   IProjectsListResponse,
+  IUpdateProjectBody,
 } from "./projects";
 export type {
   IRunnerRegisterResponse,

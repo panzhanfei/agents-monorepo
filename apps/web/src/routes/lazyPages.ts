@@ -1,5 +1,9 @@
 import { lazy } from "react";
 
+export const AgentModelsPageLazy = lazy(() =>
+  import("@/pages/AgentModelsPage").then((m) => ({ default: m.AgentModelsPage })),
+);
+
 export const LoginPageLazy = lazy(() =>
   import("@/pages/LoginPage").then((m) => ({ default: m.LoginPage })),
 );
@@ -14,6 +18,14 @@ export const ProjectsPageLazy = lazy(() =>
 
 export const ProjectTasksPageLazy = lazy(() =>
   import("@/pages/ProjectTasksPage").then((m) => ({ default: m.ProjectTasksPage })),
+);
+
+export const ProjectDialoguePageLazy = lazy(() =>
+  import("@/pages/ProjectDialoguePage").then((m) => ({ default: m.ProjectDialoguePage })),
+);
+
+export const ProjectConfigPageLazy = lazy(() =>
+  import("@/pages/ProjectConfigPage").then((m) => ({ default: m.ProjectConfigPage })),
 );
 
 export const RunnerRegisterPageLazy = lazy(() =>

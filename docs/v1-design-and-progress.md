@@ -94,6 +94,7 @@
 | 2026-05-13 | [logging.md](./logging.md#phase1-logging-baseline)：**第一期日志底线** | **traceId 贯通**、单行 JSON、请求耗时、Worker 继承 traceId；与 backlog **优先级 4** 合并交付 | — | 排障主手段，与 ARCHITECTURE §6 对齐 |
 | 2026-05-13 | [ARCHITECTURE §10](./ARCHITECTURE.md#graceful-shutdown)：**优雅退出** | API `server.close` + Prisma/Redis 关闭；Worker `worker.close` + 超时；**shutdown_* 日志**；与 backlog **优先级 14** 合并 | K8s `terminationGracePeriodSeconds` 留余量 | 避免 Terminating 卡住 / 连接泄漏 |
 | 2026-05-13 | **阶段衔接**：第一期后再做 Agents | Node + `apps/web` **闭环后再** 细分 Agents、梳理契约与排期；不与第一期并行铺开 | — | 见 [phased-delivery · 第二期](./phased-delivery.md#phase2-agents) |
+| 2026-05-13 | **平台层 v1（不含 Agent）阶段性收口** | Node + `apps/web`：**注册 / 登录 / refresh、`GET /auth/me`、access JWT、前端受保护请求遇 `401` 静默续签**；鉴权中间件、路由与配置面可用 | Agent 模型 / 推理探测 / 编排等 **不计入本条「平台 v1」边界**，与第二期并行草稿区隔 | **2026-05-14 起**：转入 **Agent 相关**开发，并按 [第二期门禁](./phased-delivery.md#phase2-agents) 对齐契约与排期 |
 | 2026-05-14 | **日历拍板** | 第一期 Node + React **`apps/web`：2 个工作日**（backlog 全量不砍） | — | 第二期 Agents：**10～14 个工作日**（含与前后端联调），见 [v1 · 第二期日历](./v1-design-and-progress.md#phase2-agents-calendar) |
 | 2026-05-14 | **第二期细则 defer** | Agents **架构 / 技术选型 / 流程细节** 第二期开局再定型；**10～14 天为粗估**，定型后重排里程碑 | — | 见 [phased-delivery · 第二期](./phased-delivery.md#phase2-agents) |
 

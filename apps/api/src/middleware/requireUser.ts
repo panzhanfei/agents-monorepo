@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
-import { HttpError, prisma, verifyUserAccessToken } from "@/lib";
+import { HttpError, prisma, verifyUserAccessToken, toAuthUserPayload, userAgentSlotAuthSelect } from "@/lib";
 
 const BEARER = /^Bearer\s+(.+)$/i;
 
@@ -19,13 +19,17 @@ export const requireUser = async (req: Request, _res: Response, next: NextFuncti
       throw new HttpError(401, "invalid_token", "Invalid access token");
     }
 
-    const user = await prisma.user.findUnique({
+    const row = await prisma.user.findUnique({
       where: { id: claims.sub },
-      select: { id: true, email: true },
+      select: {
+        id: true,
+        email: true,
+        agentSlotConfigs: { select: userAgentSlotAuthSelect },
+      },
     });
-    if (!user) throw new HttpError(401, "invalid_token", "User not found");
+    if (!row) throw new HttpError(401, "invalid_token", "User not found");
 
-    req.authUser = user;
+    req.authUser = toAuthUserPayload(row, row.agentSlotConfigs);
     next();
   } catch (e) {
     next(e);

@@ -3,8 +3,11 @@ import { Box, Button, Flex, Heading } from "@radix-ui/themes";
 import { NavLink, Route, Routes } from "react-router-dom";
 import { useAuth } from "@/auth";
 import {
+  AgentModelsPageLazy,
   LoginPageLazy,
   ProjectTasksPageLazy,
+  ProjectDialoguePageLazy,
+  ProjectConfigPageLazy,
   ProjectsPageLazy,
   Protected,
   RegisterPageLazy,
@@ -79,8 +82,11 @@ export const App = () => {
 
               <Route element={<Protected />}>
                 <Route path="/projects" element={<ProjectsPageLazy />} />
+                <Route path="/projects/:projectId/chat" element={<ProjectDialoguePageLazy />} />
+                <Route path="/projects/:projectId/config" element={<ProjectConfigPageLazy />} />
                 <Route path="/projects/:projectId/tasks" element={<ProjectTasksPageLazy />} />
                 <Route path="/runners" element={<RunnerRegisterPageLazy />} />
+                <Route path="/settings/agent-models" element={<AgentModelsPageLazy />} />
                 <Route path="/settings" element={<SettingsPageLazy />} />
               </Route>
 

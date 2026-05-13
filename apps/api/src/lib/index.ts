@@ -14,3 +14,13 @@ export {
 } from "./runnerCredentials";
 export { runnerTtlMs, isRunnerOnlineByLastSeen } from "./runnerOnline";
 export { requireUserIdOrThrow, pickRouteStringParam } from "./requestScope";
+export { coerceAgentModelsJson } from "./agentModels";
+export { mergeAgentInferenceStored } from "./agentInference";
+export { runInferenceProbe } from "./inferenceProbe";
+export type { IInferenceProbeInput } from "./inferenceProbe";
+export {
+  mergeAgentSlotForPersist,
+  userAgentSlotRowToInferenceRaw,
+} from "./agentSlotMerge";
+export { toAuthUserPayload, userAgentSlotAuthSelect } from "./authUserPayload";
+export type { IUserAgentSlotAuthRow } from "./authUserPayload";

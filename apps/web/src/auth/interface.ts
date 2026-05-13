@@ -7,4 +7,5 @@ export type IAuthContextValue = {
   user: IAuthUser | null;
   setSession: (accessToken: string, refreshToken: string, user: IAuthUser) => void;
   clearSession: () => void;
+  reloadProfile: () => Promise<void>;
 };

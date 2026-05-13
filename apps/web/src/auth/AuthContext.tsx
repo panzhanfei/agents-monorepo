@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { apiSetAccessToken, clearAccessToken } from "@/api";
+import { apiSetAccessToken, clearAccessToken, fetchMe } from "@/api";
 import { queryClient } from "@/query/client";
 import { restoreSessionFromToken } from "./bootstrapSession";
 import { clearAllStoredAuth, readStoredToken, writeStoredRefresh, writeStoredToken } from "./tokenStorage";
@@ -57,14 +57,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUser(null);
   }, []);
 
+  const reloadProfile = useCallback(async (): Promise<void> => {
+    const me = await fetchMe();
+    setUser(me.user);
+  }, []);
+
   const value = useMemo<IAuthContextValue>(
     () => ({
       accessToken,
       user,
       setSession,
       clearSession,
+      reloadProfile,
     }),
-    [accessToken, clearSession, setSession, user],
+    [accessToken, clearSession, reloadProfile, setSession, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

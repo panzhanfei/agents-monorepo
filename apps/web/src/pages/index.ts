@@ -1,6 +1,9 @@
+export { AgentModelsPage } from "./AgentModelsPage";
 export { LoginPage } from "./LoginPage";
 export { RegisterPage } from "./RegisterPage";
 export { ProjectsPage } from "./ProjectsPage";
+export { ProjectDialoguePage } from "./ProjectDialoguePage";
 export { ProjectTasksPage } from "./ProjectTasksPage";
+export { ProjectConfigPage } from "./ProjectConfigPage";
 export { RunnerRegisterPage } from "./RunnerRegisterPage";
 export { SettingsPage } from "./SettingsPage";

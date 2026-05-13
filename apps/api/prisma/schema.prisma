@@ -14,16 +14,43 @@ enum TaskStatus {
   FAILED
 }
 
+enum AgentInferenceMode {
+  local
+  hosted
+}
+
 model User {
-  id             String          @id @default(cuid())
-  email          String          @unique
-  passwordHash   String
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  projects       Project[]
-  runners        RunnerDevice[]
-  tasks          Task[]
-  refreshTokens  RefreshToken[]
+  id               String               @id @default(cuid())
+  email            String               @unique
+  passwordHash     String
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  agentSlotConfigs UserAgentSlotConfig[]
+  projects         Project[]
+  runners          RunnerDevice[]
+  tasks            Task[]
+  refreshTokens    RefreshToken[]
+}
+
+/// 每个 Agent 槽位一条记录：本地/线上、网关、密钥与模型名均独立。
+model UserAgentSlotConfig {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  slotKey String
+
+  inferenceMode  AgentInferenceMode @default(local)
+  baseUrl        String?
+  hostedProvider String?
+  apiKey         String?
+  modelId        String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, slotKey])
+  @@index([userId])
 }
 
 model RefreshToken {
@@ -43,6 +70,7 @@ model Project {
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   name          String
   workspaceRoot String
+  gitUrl        String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   tasks         Task[]

@@ -1,4 +1,5 @@
 import { Box, Button, Callout, Card, Flex, Heading, Text, TextField } from "@radix-ui/themes";
+import { Link as RouterLink } from "react-router-dom";
 import { ApiError, getApiBase } from "@/api";
 import { useAuth } from "@/auth";
 import { useMeQuery } from "@/hooks";
@@ -30,6 +31,18 @@ export const SettingsPage = () => {
           <Callout.Text>{profileError}</Callout.Text>
         </Callout.Root>
       ) : null}
+
+      <Card size="2">
+        <Flex direction="column" gap="3">
+          <Heading size="4">Agent 与推理</Heading>
+          <Text color="gray" size="2" highContrast={false}>
+            每个 Agent 槽位可单独配置本地/线上、网关与模型。
+          </Text>
+          <Button type="button" variant="surface" color="gray" asChild>
+            <RouterLink to="/settings/agent-models">Agent 配置（按槽位）</RouterLink>
+          </Button>
+        </Flex>
+      </Card>
 
       <Card size="2">
         <Flex direction="column" gap="4">

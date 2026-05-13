@@ -1,10 +1,11 @@
-import type { RunnerDevice, User } from "@prisma/client";
+import type { IAuthUser } from "@agents/shared-types";
+import type { RunnerDevice } from "@prisma/client";
 
 declare global {
   namespace Express {
     interface Request {
       traceId?: string;
-      authUser?: Pick<User, "id" | "email">;
+      authUser?: IAuthUser;
       authRunner?: RunnerDevice;
     }
   }
