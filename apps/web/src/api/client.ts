@@ -6,7 +6,20 @@ import {
   writeStoredToken,
 } from "@/auth/tokenStorage";
 
-const envBase = (): string => import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:3000";
+const trimApiBase = (value: unknown): string | undefined => {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+};
+
+/** 线上优先：已配置 `VITE_API_BASE_ONLINE` 时用线上根地址，否则 `VITE_API_BASE`，再否则本地默认。 */
+const envBase = (): string => {
+  const online = trimApiBase(import.meta.env.VITE_API_BASE_ONLINE);
+  if (online) return online;
+  const fallback = trimApiBase(import.meta.env.VITE_API_BASE);
+  if (fallback) return fallback;
+  return "http://127.0.0.1:3000";
+};
 
 export const getApiBase = (): string => envBase();
 

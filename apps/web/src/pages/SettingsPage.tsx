@@ -49,7 +49,10 @@ export const SettingsPage = () => {
           <Heading size="4">前端环境</Heading>
           <Flex direction="column" gap="1">
             <Text as="label" htmlFor="vite-api-base" size="2" weight="medium">
-              VITE_API_BASE
+              当前 API Base（生效地址）
+            </Text>
+            <Text color="gray" size="1" highContrast={false}>
+              优先级：`VITE_API_BASE_ONLINE` → `VITE_API_BASE` → 默认 `http://127.0.0.1:3000`
             </Text>
             <TextField.Root id="vite-api-base" readOnly value={getApiBase()} />
           </Flex>
