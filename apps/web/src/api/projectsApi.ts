@@ -19,3 +19,8 @@ export const patchProject = (projectId: string, body: IUpdateProjectBody): Promi
     method: "PATCH",
     body: JSON.stringify(body),
   });
+
+export const deleteProject = (projectId: string): Promise<void> =>
+  fetchJson<void>(`/projects/${encodeURIComponent(projectId)}`, {
+    method: "DELETE",
+  });

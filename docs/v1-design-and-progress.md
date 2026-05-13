@@ -97,5 +97,7 @@
 | 2026-05-13 | **平台层 v1（不含 Agent）阶段性收口** | Node + `apps/web`：**注册 / 登录 / refresh、`GET /auth/me`、access JWT、前端受保护请求遇 `401` 静默续签**；鉴权中间件、路由与配置面可用 | Agent 模型 / 推理探测 / 编排等 **不计入本条「平台 v1」边界**，与第二期并行草稿区隔 | **2026-05-14 起**：转入 **Agent 相关**开发，并按 [第二期门禁](./phased-delivery.md#phase2-agents) 对齐契约与排期 |
 | 2026-05-14 | **日历拍板** | 第一期 Node + React **`apps/web`：2 个工作日**（backlog 全量不砍） | — | 第二期 Agents：**10～14 个工作日**（含与前后端联调），见 [v1 · 第二期日历](./v1-design-and-progress.md#phase2-agents-calendar) |
 | 2026-05-14 | **第二期细则 defer** | Agents **架构 / 技术选型 / 流程细节** 第二期开局再定型；**10～14 天为粗估**，定型后重排里程碑 | — | 见 [phased-delivery · 第二期](./phased-delivery.md#phase2-agents) |
+| 2026-05-13 晚 | **当日收尾** | Agent 配置（按槽）：**独立保存 / 丢弃草稿**、必填项靠前与 `*`、线上模式下 API Key 必填校验；`apps/web` API Base：**优先 `VITE_API_BASE_ONLINE`，否则本地默认** | — | **明日硬性**：Agents **工作流梳理与拆分** + **技术栈 / 框架选型**（产出简短书面结论，可进 ARCHITECTURE/ADR）；**力争启动**：首个 **入口 Agent（如 router）** 前后端打通 + **流式输出**（与既定 SSE/WebSocket 方向对齐，见 ARCHITECTURE §5） |
+| 2026-05-14 | **第一期 backlog 缺口收口（优先级 6 / 18）** | **`apps/web`**：**项目删除**（确认对话框 + `DELETE /projects/:id`）；**当前项目持久化**：**Zustand + `persist`（localStorage）** 维护 `currentProjectId`，嵌套路由 **`ProjectWorkspaceLayout`** 在进入 `/projects/:projectId/{chat,config,tasks}` 时同步；新建项目成功写入「当前项目」；列表页 **记住的项目** 快捷入口；删除命中时清空记住 ID | — | 与上文「第一期自检」更易对齐；**流式**：仍以 API **SSE 占位**为主，**WebSocket** 按二期/产品需求再定 |
 
 ← [返回文档索引](./README.md)

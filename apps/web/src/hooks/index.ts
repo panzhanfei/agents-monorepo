@@ -9,6 +9,7 @@ export {
   getCreateProjectMutationErrorMessage,
   getProjectsMutationErrorMessage,
   useCreateProjectMutation,
+  useDeleteProjectMutation,
   useProjectsListQuery,
   useUpdateProjectMutation,
 } from "./projects";

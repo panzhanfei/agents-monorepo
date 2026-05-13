@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ApiError,
   createProject,
+  deleteProject,
   fetchProjects,
   patchProject,
   type ICreateProjectBody,
@@ -9,6 +10,7 @@ import {
 } from "@/api";
 import { useAuth } from "@/auth";
 import { queryKeys } from "@/query/keys";
+import { useCurrentProjectStore } from "@/stores";
 
 export const useProjectsListQuery = () => {
   const { accessToken } = useAuth();
@@ -41,8 +43,20 @@ export const useUpdateProjectMutation = () => {
   });
 };
 
+export const useDeleteProjectMutation = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (projectId: string) => deleteProject(projectId),
+    onSuccess: (_data, projectId) => {
+      useCurrentProjectStore.getState().clearCurrentProjectIfMatches(projectId);
+      void qc.invalidateQueries({ queryKey: queryKeys.projects.list() });
+      void qc.invalidateQueries({ queryKey: queryKeys.tasks.byProject(projectId) });
+    },
+  });
+};
+
 export const getProjectsMutationErrorMessage = (e: unknown): string =>
-  e instanceof ApiError ? e.message : "Save failed";
+  e instanceof ApiError ? e.message : "操作失败";
 
 export const getCreateProjectMutationErrorMessage = (e: unknown): string =>
   e instanceof ApiError ? e.message : "Create failed";

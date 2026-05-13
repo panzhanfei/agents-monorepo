@@ -8,23 +8,31 @@ import {
   Flex,
   Heading,
   Link,
+  Strong,
   Table,
   Text,
   TextField,
 } from "@radix-ui/themes";
 import { Link as RouterLink } from "react-router-dom";
 import { ApiError } from "@/api";
+import type { IProjectRow } from "@/api";
 import {
   getCreateProjectMutationErrorMessage,
+  getProjectsMutationErrorMessage,
   useCreateProjectMutation,
+  useDeleteProjectMutation,
   useProjectsListQuery,
 } from "@/hooks";
+import { useCurrentProjectStore } from "@/stores";
 
 const PAGE_SIZE = 10;
 
 export const ProjectsPage = () => {
   const projectsQ = useProjectsListQuery();
   const createM = useCreateProjectMutation();
+  const deleteM = useDeleteProjectMutation();
+  const currentProjectId = useCurrentProjectStore((s) => s.currentProjectId);
+  const setCurrentProjectId = useCurrentProjectStore((s) => s.setCurrentProjectId);
 
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -32,6 +40,7 @@ export const ProjectsPage = () => {
   const [name, setName] = useState("Demo Project");
   const [workspaceRoot, setWorkspaceRoot] = useState("/tmp/demo-workspace");
   const [gitUrlDraft, setGitUrlDraft] = useState("");
+  const [pendingDelete, setPendingDelete] = useState<IProjectRow | null>(null);
 
   const filtered = useMemo(() => {
     const list = projectsQ.data ?? [];
@@ -61,13 +70,20 @@ export const ProjectsPage = () => {
     return filtered.slice(start, start + PAGE_SIZE);
   }, [filtered, page]);
 
+  const rememberedProject = useMemo(() => {
+    if (!currentProjectId) return null;
+    const list = projectsQ.data ?? [];
+    return list.find((p) => p.id === currentProjectId) ?? null;
+  }, [currentProjectId, projectsQ.data]);
+
   const loadError = projectsQ.isError
     ? projectsQ.error instanceof ApiError
       ? projectsQ.error.message
       : "Failed to load projects"
     : null;
   const createError = createM.isError ? getCreateProjectMutationErrorMessage(createM.error) : null;
-  const error = loadError ?? createError;
+  const deleteError = deleteM.isError ? getProjectsMutationErrorMessage(deleteM.error) : null;
+  const error = loadError ?? createError ?? deleteError;
 
   const onCreate = (e: FormEvent): void => {
     e.preventDefault();
@@ -75,11 +91,19 @@ export const ProjectsPage = () => {
     createM.mutate(
       { name, workspaceRoot, ...(g.length > 0 ? { gitUrl: g } : {}) },
       {
-        onSuccess: () => {
+        onSuccess: (res) => {
+          setCurrentProjectId(res.project.id);
           setCreateOpen(false);
         },
       },
     );
+  };
+
+  const onConfirmDelete = (): void => {
+    if (!pendingDelete) return;
+    deleteM.mutate(pendingDelete.id, {
+      onSuccess: () => setPendingDelete(null),
+    });
   };
 
   return (
@@ -167,6 +191,28 @@ export const ProjectsPage = () => {
         </Callout.Root>
       ) : null}
 
+      {rememberedProject ? (
+        <Callout.Root color="blue" role="status">
+          <Callout.Text>
+            <Strong>记住的当前项目</Strong>
+            {`: ${rememberedProject.name} · `}
+            <Link size="2" asChild>
+              <RouterLink to={`/projects/${rememberedProject.id}/tasks`}>打开任务</RouterLink>
+            </Link>
+            {" · "}
+            <Link size="2" asChild>
+              <RouterLink to={`/projects/${rememberedProject.id}/chat`}>对话</RouterLink>
+            </Link>
+          </Callout.Text>
+        </Callout.Root>
+      ) : currentProjectId ? (
+        <Callout.Root color="amber" role="status">
+          <Callout.Text>
+            本地记录的项目 ID 在当前列表中未找到（可能已删除或无权限）；进入任一项目子页面后将更新记录。
+          </Callout.Text>
+        </Callout.Root>
+      ) : null}
+
       <Card size="2">
         <Flex direction="column" gap="4">
           <Flex align="center" justify="between" gap="3" wrap="wrap">
@@ -191,7 +237,7 @@ export const ProjectsPage = () => {
                 <Table.Row>
                   <Table.ColumnHeaderCell>名称</Table.ColumnHeaderCell>
                   <Table.ColumnHeaderCell>workspaceRoot</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell width="200px" justify="end" />
+                  <Table.ColumnHeaderCell width="280px" justify="end" />
                 </Table.Row>
               </Table.Header>
               <Table.Body>
@@ -217,10 +263,22 @@ export const ProjectsPage = () => {
                       <Table.Cell justify="end">
                         <Flex gap="2" justify="end" wrap="wrap">
                           <Button type="button" size="1" asChild>
+                            <RouterLink to={`/projects/${p.id}/tasks`}>任务</RouterLink>
+                          </Button>
+                          <Button type="button" size="1" variant="soft" color="gray" asChild>
                             <RouterLink to={`/projects/${p.id}/chat`}>对话</RouterLink>
                           </Button>
                           <Button type="button" variant="soft" color="gray" size="1" asChild>
                             <RouterLink to={`/projects/${p.id}/config`}>配置</RouterLink>
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="soft"
+                            color="red"
+                            size="1"
+                            onClick={() => setPendingDelete(p)}
+                          >
+                            删除
                           </Button>
                         </Flex>
                       </Table.Cell>
@@ -262,6 +320,25 @@ export const ProjectsPage = () => {
           ) : null}
         </Flex>
       </Card>
+
+      <Dialog.Root open={pendingDelete !== null} onOpenChange={(open) => !open && setPendingDelete(null)}>
+        <Dialog.Content maxWidth="420px">
+          <Dialog.Title>删除项目</Dialog.Title>
+          <Dialog.Description size="2" color="gray" mb="3">
+            将永久删除「{pendingDelete?.name ?? ""}」及其关联任务数据（不可恢复）。确认继续？
+          </Dialog.Description>
+          <Flex gap="2" justify="end">
+            <Dialog.Close>
+              <Button type="button" variant="soft" color="gray" disabled={deleteM.isPending}>
+                取消
+              </Button>
+            </Dialog.Close>
+            <Button type="button" color="red" disabled={deleteM.isPending} onClick={onConfirmDelete}>
+              {deleteM.isPending ? "删除中…" : "确认删除"}
+            </Button>
+          </Flex>
+        </Dialog.Content>
+      </Dialog.Root>
     </Flex>
   );
 };

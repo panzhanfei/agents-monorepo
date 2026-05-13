@@ -9,6 +9,7 @@ import {
   ProjectDialoguePageLazy,
   ProjectConfigPageLazy,
   ProjectsPageLazy,
+  ProjectWorkspaceLayout,
   Protected,
   RegisterPageLazy,
   RouteFallback,
@@ -82,9 +83,11 @@ export const App = () => {
 
               <Route element={<Protected />}>
                 <Route path="/projects" element={<ProjectsPageLazy />} />
-                <Route path="/projects/:projectId/chat" element={<ProjectDialoguePageLazy />} />
-                <Route path="/projects/:projectId/config" element={<ProjectConfigPageLazy />} />
-                <Route path="/projects/:projectId/tasks" element={<ProjectTasksPageLazy />} />
+                <Route path="/projects/:projectId" element={<ProjectWorkspaceLayout />}>
+                  <Route path="chat" element={<ProjectDialoguePageLazy />} />
+                  <Route path="config" element={<ProjectConfigPageLazy />} />
+                  <Route path="tasks" element={<ProjectTasksPageLazy />} />
+                </Route>
                 <Route path="/runners" element={<RunnerRegisterPageLazy />} />
                 <Route path="/settings/agent-models" element={<AgentModelsPageLazy />} />
                 <Route path="/settings" element={<SettingsPageLazy />} />
