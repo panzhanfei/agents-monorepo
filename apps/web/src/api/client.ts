@@ -1,4 +1,11 @@
 import type { IApiErrorBody, IFetchJsonOptions } from "./interface";
+import {
+  clearAllStoredAuth,
+  readStoredRefresh,
+  writeStoredRefresh,
+  writeStoredToken,
+} from "@/auth/tokenStorage";
+
 const envBase = (): string => import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:3000";
 
 export const getApiBase = (): string => envBase();
@@ -25,22 +32,68 @@ export class ApiError extends Error {
   }
 }
 
+let refreshInFlight: Promise<boolean> | null = null;
+
+const refreshAccessSession = async (): Promise<boolean> => {
+  if (refreshInFlight) {
+    return refreshInFlight;
+  }
+  const storedRefresh = readStoredRefresh();
+  if (!storedRefresh) {
+    return false;
+  }
+
+  const run = async (): Promise<boolean> => {
+    try {
+      const url = `${envBase()}/auth/refresh`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken: storedRefresh }),
+      });
+      const parsed = (await res.json().catch(() => null)) as
+        | { accessToken?: unknown; refreshToken?: unknown }
+        | null;
+      if (!res.ok || !parsed || typeof parsed !== "object") {
+        return false;
+      }
+      const nextAccess = parsed.accessToken;
+      const nextRefresh = parsed.refreshToken;
+      if (typeof nextAccess !== "string" || typeof nextRefresh !== "string") {
+        return false;
+      }
+      writeStoredToken(nextAccess);
+      writeStoredRefresh(nextRefresh);
+      apiSetAccessToken(nextAccess);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      refreshInFlight = null;
+    }
+  };
+
+  refreshInFlight = run();
+  return refreshInFlight;
+};
+
 export const fetchJson = async <T,>(path: string, options: IFetchJsonOptions = {}): Promise<T> => {
+  const { auth: useAuthHeader = true, _refreshAttempted, ...init } = options;
   const url = `${envBase()}${path.startsWith("/") ? path : `/${path}`}`;
-  const headers = new Headers(options.headers);
+  const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
-  const hasBody = options.body !== undefined;
+  const hasBody = init.body !== undefined;
   if (hasBody && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
 
   const token = accessToken;
-  if (options.auth !== false && token) {
+  if (useAuthHeader !== false && token) {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
   const res = await fetch(url, {
-    ...options,
+    ...init,
     headers,
   });
 
@@ -49,6 +102,19 @@ export const fetchJson = async <T,>(path: string, options: IFetchJsonOptions = {
   const parsed = isJson ? ((await res.json()) as unknown) : null;
 
   if (!res.ok) {
+    if (
+      res.status === 401 &&
+      useAuthHeader !== false &&
+      !_refreshAttempted &&
+      path !== "/auth/refresh"
+    ) {
+      const refreshed = await refreshAccessSession();
+      if (refreshed) {
+        return fetchJson<T>(path, { ...options, _refreshAttempted: true });
+      }
+      clearAllStoredAuth();
+      clearAccessToken();
+    }
     const body = parsed && typeof parsed === "object" ? (parsed as IApiErrorBody) : null;
     const message = body?.message ?? res.statusText ?? "Request failed";
     throw new ApiError(res.status, message, body);

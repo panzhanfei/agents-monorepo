@@ -5,7 +5,13 @@ export type IAuthUser = {
 
 export type IAuthSessionResponse = {
   accessToken: string;
+  refreshToken: string;
   user: IAuthUser;
+};
+
+export type IAuthRefreshResponse = {
+  accessToken: string;
+  refreshToken: string;
 };
 
 export type IAuthMeResponse = {

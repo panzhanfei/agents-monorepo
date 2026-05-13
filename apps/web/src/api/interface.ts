@@ -1,5 +1,6 @@
 export type {
   IAuthMeResponse,
+  IAuthRefreshResponse,
   IAuthSessionResponse,
   IAuthUser,
   ICreateProjectBody,
@@ -23,4 +24,6 @@ export type IApiErrorBody = {
 
 export type IFetchJsonOptions = RequestInit & {
   auth?: boolean;
+  /** @internal */
+  _refreshAttempted?: boolean;
 };

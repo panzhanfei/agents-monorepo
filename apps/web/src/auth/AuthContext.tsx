@@ -9,7 +9,7 @@ import {
 } from "react";
 import { apiSetAccessToken, clearAccessToken } from "@/api";
 import { restoreSessionFromToken } from "./bootstrapSession";
-import { clearStoredToken, readStoredToken, writeStoredToken } from "./tokenStorage";
+import { clearAllStoredAuth, readStoredToken, writeStoredRefresh, writeStoredToken } from "./tokenStorage";
 import type { IAuthContextValue, IAuthUser } from "./interface";
 
 export type { IAuthUser } from "./interface";
@@ -33,22 +33,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
       if (result.cleared) {
-        clearStoredToken();
+        clearAllStoredAuth();
         setAccessTokenState(null);
         setUser(null);
       }
     });
   }, []);
 
-  const setSession = useCallback((token: string, nextUser: IAuthUser) => {
-    writeStoredToken(token);
-    apiSetAccessToken(token);
-    setAccessTokenState(token);
+  const setSession = useCallback((accessTokenValue: string, refreshToken: string, nextUser: IAuthUser) => {
+    writeStoredToken(accessTokenValue);
+    writeStoredRefresh(refreshToken);
+    apiSetAccessToken(accessTokenValue);
+    setAccessTokenState(accessTokenValue);
     setUser(nextUser);
   }, []);
 
   const clearSession = useCallback(() => {
-    clearStoredToken();
+    clearAllStoredAuth();
     clearAccessToken();
     setAccessTokenState(null);
     setUser(null);

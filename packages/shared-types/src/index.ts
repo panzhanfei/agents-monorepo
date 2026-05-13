@@ -1,6 +1,7 @@
 export type {
   IAuthUser,
   IAuthMeResponse,
+  IAuthRefreshResponse,
   IAuthSessionResponse,
 } from "./auth";
 export type {

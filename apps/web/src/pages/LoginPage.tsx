@@ -23,7 +23,7 @@ export const LoginPage = () => {
     setError(null);
     void postLogin({ email, password })
       .then((res) => {
-        setSession(res.accessToken, res.user);
+        setSession(res.accessToken, res.refreshToken, res.user);
         navigate("/projects", { replace: true });
       })
       .catch((err: unknown) => {

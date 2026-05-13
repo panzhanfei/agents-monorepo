@@ -5,6 +5,6 @@ export type { IAuthUser };
 export type IAuthContextValue = {
   accessToken: string | null;
   user: IAuthUser | null;
-  setSession: (token: string, user: IAuthUser) => void;
+  setSession: (accessToken: string, refreshToken: string, user: IAuthUser) => void;
   clearSession: () => void;
 };
