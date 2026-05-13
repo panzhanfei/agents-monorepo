@@ -2,23 +2,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-/**
- * Post-processes `tsc` output for Node ESM:
- * 1. Bare barrel dirs (`./lib`, `../config`, …) → `./lib/index.js`, etc.
- * 2. Other extensionless relative specifiers → append `.js` (e.g. `./httpLog` → `./httpLog.js`).
- */
+/** Append `.js` to extensionless relative specifiers in emitted ESM (Node requires explicit extensions). */
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const distDir = path.resolve(__dirname, "..", "dist");
-
-const barrels = new Set(["config", "lib", "middleware", "routes", "queue", "jobs"]);
 
 const fixSpec = (spec) => {
   if (!spec.startsWith(".")) return spec;
   if (/\.(js|json|mjs|cjs)$/i.test(spec)) return spec;
-  const norm = spec.replace(/\\/g, "/");
-  const segments = norm.split("/");
-  const last = segments[segments.length - 1] ?? "";
-  if (barrels.has(last)) return `${spec}/index.js`;
   return `${spec}.js`;
 };
 

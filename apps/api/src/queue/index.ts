@@ -1,1 +1,1 @@
-export { getRunnerTaskQueue, enqueueRunnerTaskJob } from "./agentQueue.js";
+export { getRunnerTaskQueue, enqueueRunnerTaskJob } from "./agentQueue";

@@ -64,9 +64,9 @@ export function buildUser(id: string) { ... }
 
 ### 导入约定
 
-- **路径别名 `@/`**：**`apps/web`**、**`apps/api`** 的源码树根 **`src/`** 映射为 **`@/`**（例如 **`import { x } from "@/lib"`**）；**跨目录**引用 barrel 时优先 **`@/lib`**、**`@/routes`** 等，**不写** **`/index`**。**`apps/web`**：`vite.config.ts` **`resolve.alias`** 与 **`tsconfig.app.json`** **`paths`** 对齐。**`apps/api`**：**`tsconfig.json`** **`paths`**；**`pnpm build`**：`tsc` → **`tsc-alias`**（把 **`@/`** 改写为 **`dist/`** 内相对路径）→ **`fix-barrel-imports`**（将 **`config` / `lib` / `middleware` / `routes` / `queue` / `jobs`** 等 barrel 裸路径补上 **`/index.js`**，供 **`node`** 加载）；**新增**同级 barrel 根目录名时需同步 **`scripts/fix-barrel-imports.mjs`** 内集合。**同一目录内**：**`apps/web`** 引用兄弟 **`.ts` / `.tsx`** 模块宜 **`./foo`**（**不写** **`.js`**）；**`apps/api`** 仍 **`./foo.js`**，与 **`tsc` 产出**一致。**不经别名**绕 barrel。Monorepo 包仍走 **`package.json` `exports`**。
-- **目录内部**：实现文件之间仍优先 **同级相对路径**（**`apps/web`**：`./client`、`./interface`；**`apps/api`**：`./client.js`、`./interface.js`），**不要**在同目录实现里为引用兄弟文件而去绕一圈自己的 `index.ts`，避免 **barrel 自引用**。
-- **对外边界**：新增可被其它目录使用的符号时，在 **`index.ts`** 里 **`export { … } from './foo'`**（**`apps/web`**）或 **`from './foo.js'`**（**`apps/api`**）按需聚合；**仅目录内部使用**的实现细节可不写入 barrel。
+- **路径别名 `@/`**：**`apps/web`**、**`apps/api`** 的源码树根 **`src/`** 映射为 **`@/`**（例如 **`import { x } from "@/lib"`**）；**跨目录**引用 barrel 时优先 **`@/lib`**、**`@/routes`** 等，**不写** **`/index`**。**`apps/web`**：`vite.config.ts` **`resolve.alias`** 与 **`tsconfig.app.json`** **`paths`** 对齐。**`apps/api`**：**`tsconfig.json`** **`paths`**；**`pnpm build`**：`tsc` → **`tsc-alias`**（把 **`@/`** 改写为 **`dist/`** 内相对路径）→ **`scripts/fix-barrel-imports.mjs`**（为 **`node`** 修正 **`dist`**：**barrel** 裸路径 → **`…/<目录>/index.js`**，其余无扩展名的相对路径 → **追加 `.js`**）。**新增**同级 barrel 根目录名时需同步该脚本内 **`barrels`** 集合。**同一目录内**：**`apps/web`**、**`apps/api`** 引用自有 **`.ts`/`.tsx`** 模块均宜 **`./foo`**（**不写** **`.js`/`.ts`/`.tsx`**）；**`apps/api`** 运行时依赖上述 **`dist`** 后处理。**不经别名**绕 barrel。Monorepo 包仍走 **`package.json` `exports`**。
+- **目录内部**：实现文件之间仍优先 **同级相对路径**（**`./client`**、**`./interface`** 等），**不要**在同目录实现里为引用兄弟文件而去绕一圈自己的 `index.ts`，避免 **barrel 自引用**。
+- **对外边界**：新增可被其它目录使用的符号时，在 **`index.ts`** 里 **`export { … } from './foo'`**（不写 **`.js`**）按需聚合；**仅目录内部使用**的实现细节可不写入 barrel。
 - **不要进 barrel**：仅供测试的 helper / fixture / mock、`.test.` / `.spec.` / `__tests__/` 下模块——**不要**写入业务用 **`index.ts`**。
 
 ### 防循环依赖（硬规则）
@@ -77,7 +77,7 @@ export function buildUser(id: string) { ... }
 
 - **配置**：在 **`config/index.ts`**（或包约定入口）汇总再导出（实现仍可落在 `env.ts` 等文件中）。
 - **路由（后端）**：新路由文件写在 **`routes/`**，并在 **`src/server.ts`** 的 `createApp` 中挂载；**路由聚合导出**放在 **`routes/index.ts`**。
-- **`packages/*`**：遵循 **`package.json` `exports`** 与 **`src/index.ts`**（若存在），原则与本条一致。
+- **`packages/*`**：遵循 **`package.json` `exports`** 与 **`src/index.ts`**（若存在），原则与本条一致。**`@agents/shared-types`** 源码不写 **`.js`** 后缀；**`pnpm build`** 含 **`scripts/fix-dist-relative-imports.mjs`**，保证 **`dist/`** 内相对 **`import`** 带 **`.js`**（当前 **`index`** 多为 **`export {}`**，脚本为未来增减运行时导出预留）。
 - **文件名并列**：若「**单文件**」与「**同名目录**」并列（如 `proxy.ts` 与 `proxy/`），解析器可能优先解析文件；按需使用子路径或明确 `./proxy/index.js`，避免误指向。
 
 ## `apps/*` 源码语言

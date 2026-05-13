@@ -1,2 +1,2 @@
-export { processRunnerTaskJob } from "./processAgentTask.js";
-export type { IRunnerTaskJobData } from "./processAgentTask.js";
+export { processRunnerTaskJob } from "./processAgentTask";
+export type { IRunnerTaskJobData } from "./processAgentTask";

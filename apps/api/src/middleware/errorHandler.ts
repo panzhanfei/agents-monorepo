@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import { ZodError } from "zod";
 import { HttpError } from "@/lib";
-import { logger } from "./httpLog.js";
+import { logger } from "./httpLog";
 
 export const errorHandler = (err: unknown, req: Request, res: Response, _next: NextFunction): void => {
   const traceId = req.traceId;

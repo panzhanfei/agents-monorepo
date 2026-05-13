@@ -1,5 +1,5 @@
-export { readIncomingTraceId, traceMiddleware, attachTraceToResponse } from "./trace.js";
-export { httpLogMiddleware, logger } from "./httpLog.js";
-export { errorHandler } from "./errorHandler.js";
-export { requireUser } from "./requireUser.js";
-export { requireRunner } from "./requireRunner.js";
+export { readIncomingTraceId, traceMiddleware, attachTraceToResponse } from "./trace";
+export { httpLogMiddleware, logger } from "./httpLog";
+export { errorHandler } from "./errorHandler";
+export { requireUser } from "./requireUser";
+export { requireRunner } from "./requireRunner";

@@ -36,12 +36,13 @@ alwaysApply: false
 
 ## `import` 说明
 
-- **`apps/api/tsconfig.json`**：`module` 为 **`ESNext`**，`moduleResolution` 为 **`Bundler`**；**路径别名** **`@/*` → `./src/*`**。**`pnpm build`**：`tsc` → **`tsc-alias -p tsconfig.json`** → **`scripts/fix-barrel-imports.mjs`**。
+- **`apps/api/tsconfig.json`**：`module` 为 **`ESNext`**，`moduleResolution` 为 **`Bundler`**；**路径别名** **`@/*` → `./src/*`**。**`pnpm build`**：`tsc` → **`tsc-alias -p tsconfig.json`** → **`scripts/fix-barrel-imports.mjs`**（**`dist`**：barrel → **`/index.js`**，叶子相对路径 → **`.js`**）。
 - **与前端共享的契约类型**：从 **`@agents/shared-types`** 使用 **`import type { … }`**（仅类型，无运行时依赖）。
-- **相对路径**：**同一目录内**仍 **`./foo.js`**；**跨目录**优先 **`@/…`**（barrel 不写 **`/index.js`**）。外部 npm 包照常包名导入。
-- **跨目录 barrel**：**`config/`、`lib/`、`middleware/`、`routes/`、`queue/`、`jobs/`** 等从 **`@/config`**、**`@/lib`** 等聚合入口引入；若新增同级 barrel 根目录，需同步 **`scripts/fix-barrel-imports.mjs`** 内的目录名集合。
-- **目录内部**（如 `routes/auth.ts`）：**同目录兄弟文件**之间优先 **`./foo.js`**，不经本目录 `index.ts`。
+- **相对路径**：源码中 **不写** **`.js`/`.ts`/`.tsx`**；**跨目录**优先 **`@/…`**（barrel 不写 **`/index`**）。外部 npm 包照常包名导入。
+- **跨目录 barrel**：**`config/`、`lib/`、`middleware/`、`routes/`、`queue/`、`jobs/`** 等从 **`@/config`**、**`@/lib`** 等聚合入口引入；若新增同级 barrel 根目录，需同步 **`scripts/fix-barrel-imports.mjs`** 内的 **`barrels`** 集合。
+- **目录内部**（如 `routes/auth.ts`）：**同目录兄弟文件**之间优先 **`./foo`**（无扩展名），不经本目录 `index.ts`。
 - **防循环**：若 barrel 会形成循环，遵循根目录 **`project-conventions.mdc`**「防循环依赖」一条（典型：`import type` 从对方 **`interface.ts`**）。
+
 ## 新增功能时的习惯
 
 - **新路由**：在 `src/routes/` 新增 `*.ts`（或按需要子目录），在 **`src/server.ts`** 的 `createApp` 里 `app.use(...)` 挂载；敏感操作配好 `requireUser` / `requireRunner` 等。

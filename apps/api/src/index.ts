@@ -1,6 +1,6 @@
 import { createServer } from "http";
 import { getEnv } from "@/config";
-import { createApp, gracefulShutdown } from "@/server.js";
+import { createApp, gracefulShutdown } from "@/server";
 import { logger } from "@/middleware";
 
 const env = getEnv();

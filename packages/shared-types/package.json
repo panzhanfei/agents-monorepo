@@ -12,7 +12,7 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node scripts/fix-dist-relative-imports.mjs",
     "prepare": "pnpm run build"
   },
   "devDependencies": {

@@ -1,5 +1,5 @@
 import type { Request } from "express";
-import { HttpError } from "./httpError.js";
+import { HttpError } from "./httpError";
 
 export const requireUserIdOrThrow = (req: Request): string => {
   const userId = req.authUser?.id;
