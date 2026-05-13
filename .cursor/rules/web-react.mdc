@@ -6,7 +6,7 @@ alwaysApply: false
 
 # apps/web 结构与分层
 
-本应用为 **Vite + React SPA**（见 `index.html`、`vite.config.ts`、`src/main.tsx`）。**无 RSC**：优化重心在客户端包体、路由拆分与渲染性能。
+本应用为 **Vite + React SPA**（见 `index.html`、`vite.config.ts`、`src/main.tsx`）。业务源码**全部为 `.ts` / `.tsx`**（含 `eslint.config.ts` 等工具配置）。**路径别名**：**`@/`** → **`src/`**（**`vite.config.ts`** **`resolve.alias`** + **`tsconfig.app.json`** **`paths`**）。**无 RSC**：优化重心在客户端包体、路由拆分与渲染性能。
 
 ## 技术栈与优化（编码向）
 
@@ -25,21 +25,22 @@ alwaysApply: false
 | 路径 | 职责 |
 |------|------|
 | **`src/App.tsx`** | 根组件与**应用内路由/布局**；保持精简，具体页面在 `pages/`。 |
-| **`src/pages/`** | **页面级路由目标**：如登录、注册、项目列表、任务、Runner 注册、设置等；按业务可再分子目录。 |
-| **`src/routes/`** | 路由相关包装（如鉴权守卫 `Protected.tsx`），不放具体业务页面 UI。 |
-| **`src/auth/`** | 登录态、`AuthContext` 等与认证相关的 React 代码。 |
-| **`src/api/`** | **HTTP 客户端、API 基址与请求封装**（如 `client.ts`）；页面只调用封装，避免散落裸 `fetch`。 |
+| **`src/pages/`** | **页面级路由目标**：如登录、注册、项目列表、任务、Runner 注册、设置等；对外聚合 **`pages/index.ts`**。 |
+| **`src/routes/`** | 路由相关包装（如鉴权守卫 `Protected.tsx`）；对外聚合 **`routes/index.ts`**。 |
+| **`src/auth/`** | 登录态、`AuthContext` 等；对外聚合 **`auth/index.ts`**（跨目录请从该入口导入）。 |
+| **`src/api/`** | HTTP 客户端与各领域请求封装；实现可在 `client.ts`、`authApi.ts` 等文件中；**跨目录统一从 `api/index.ts` 导入**。与后端对齐的领域 **`export type`** 优先来自 **`@agents/shared-types`**，再在 **`api/interface.ts`** 增补纯前端类型（如 `IFetchJsonOptions`）。同目录叶子模块导入宜 **`./client`** 等形式，**不写** **`.js`**。 |
 | **`src/assets/`** | 静态资源（图片、SVG 等）。 |
 | **`src/main.tsx`** | 入口：挂载根、`BrowserRouter` 等全局包装。 |
 
 以下目录**当前仓库未建**：若需要再引入，与根目录「项目约定」一致即可：
 
-- **`src/components/`**：可复用 UI；复杂组件可同目录 `interface.ts`。
-- **`src/hooks/`**、**`src/utils/`**、**`src/constants/`**、**`src/types/`**：跨页面 hooks、纯函数、常量、类型。
+- **`src/components/`**：可复用 UI；复杂组件可同目录 `interface.ts`；多组件时维护 **`components/index.ts`**。
+- **`src/hooks/`**、**`src/constants/`**、**`src/types/`**：跨页面 hooks、常量、类型；多文件时各自 **`index.ts`**。
+- **`src/utils/`**：跨页面纯函数；已有 **`utils/index.ts`** 时再导出新增模块。
 
 ## 协作约定
 
 - 新增页面：在 `src/pages/` 增加组件，在 `App.tsx`（或统一路由表）注册路径；需登录的路由用 `Protected` 等现有模式包裹。
 - API 与后端 **`apps/api`** 对齐：类型与路径以实际路由为准；敏感配置只走环境变量（见 `env-secrets` 规则）。
 - 多应用共享逻辑上浮至 **`packages/`**（见根目录「项目约定」）。
-- **聚合导出**：某目录下多个模块被多处引用时，可维护该目录 `index.ts`；当前 `apps/web` 体量较小时可按需添加，避免空 barrel。
+- **聚合导出**：与 **`project-conventions.mdc`** 一致——**`api/`、`auth/`、`pages/`、`utils/`、`routes/`** 等多文件目录维护 **`index.ts`**；**跨目录**从 **`@/api`**、**`@/auth`**、**`@/pages`** 等 **`@/`** 路径统一导入（**不写** **`/index`**）；**防循环**时对类型可走对方 **`interface.ts`**（见项目约定）。

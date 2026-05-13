@@ -1,0 +1,74 @@
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+import { apiSetAccessToken, clearAccessToken } from "@/api";
+import { restoreSessionFromToken } from "./bootstrapSession";
+import { clearStoredToken, readStoredToken, writeStoredToken } from "./tokenStorage";
+import type { IAuthContextValue, IAuthUser } from "./interface";
+
+export type { IAuthUser } from "./interface";
+
+const AuthContext = createContext<IAuthContextValue | undefined>(undefined);
+
+const initialToken = readStoredToken();
+
+export const AuthProvider = ({ children }: { children: ReactNode }) => {
+  const [accessToken, setAccessTokenState] = useState<string | null>(() => {
+    if (initialToken) apiSetAccessToken(initialToken);
+    return initialToken;
+  });
+  const [user, setUser] = useState<IAuthUser | null>(null);
+
+  useEffect(() => {
+    if (!initialToken) return;
+    void restoreSessionFromToken(initialToken).then((result) => {
+      if (result.ok) {
+        setUser(result.user);
+        return;
+      }
+      if (result.cleared) {
+        clearStoredToken();
+        setAccessTokenState(null);
+        setUser(null);
+      }
+    });
+  }, []);
+
+  const setSession = useCallback((token: string, nextUser: IAuthUser) => {
+    writeStoredToken(token);
+    apiSetAccessToken(token);
+    setAccessTokenState(token);
+    setUser(nextUser);
+  }, []);
+
+  const clearSession = useCallback(() => {
+    clearStoredToken();
+    clearAccessToken();
+    setAccessTokenState(null);
+    setUser(null);
+  }, []);
+
+  const value = useMemo<IAuthContextValue>(
+    () => ({
+      accessToken,
+      user,
+      setSession,
+      clearSession,
+    }),
+    [accessToken, clearSession, setSession, user],
+  );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};
+
+export const useAuth = (): IAuthContextValue => {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
+  return ctx;
+};

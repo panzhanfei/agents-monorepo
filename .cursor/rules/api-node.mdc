@@ -36,12 +36,15 @@ alwaysApply: false
 
 ## `import` 说明
 
-- 本仓库服务端源码普遍使用**相对路径** + 编译后的 **`.js` 后缀**（如 `from "./config/env.js"`），与 `tsconfig` / Node ESM 一致；若后续为 `apps/api` 配置路径别名，再统一「从目录 barrel 引入」即可。
-- **`@/…` barrel**：当前 **`apps/api` 无**统一 `src/index` 聚合业务导出；新增跨路由复用的纯函数可放 **`lib/`**，避免在路由文件间循环依赖。
-
+- **`apps/api/tsconfig.json`**：`module` 为 **`ESNext`**，`moduleResolution` 为 **`Bundler`**；**路径别名** **`@/*` → `./src/*`**。**`pnpm build`**：`tsc` → **`tsc-alias -p tsconfig.json`** → **`scripts/fix-barrel-imports.mjs`**。
+- **与前端共享的契约类型**：从 **`@agents/shared-types`** 使用 **`import type { … }`**（仅类型，无运行时依赖）。
+- **相对路径**：**同一目录内**仍 **`./foo.js`**；**跨目录**优先 **`@/…`**（barrel 不写 **`/index.js`**）。外部 npm 包照常包名导入。
+- **跨目录 barrel**：**`config/`、`lib/`、`middleware/`、`routes/`、`queue/`、`jobs/`** 等从 **`@/config`**、**`@/lib`** 等聚合入口引入；若新增同级 barrel 根目录，需同步 **`scripts/fix-barrel-imports.mjs`** 内的目录名集合。
+- **目录内部**（如 `routes/auth.ts`）：**同目录兄弟文件**之间优先 **`./foo.js`**，不经本目录 `index.ts`。
+- **防循环**：若 barrel 会形成循环，遵循根目录 **`project-conventions.mdc`**「防循环依赖」一条（典型：`import type` 从对方 **`interface.ts`**）。
 ## 新增功能时的习惯
 
 - **新路由**：在 `src/routes/` 新增 `*.ts`（或按需要子目录），在 **`src/server.ts`** 的 `createApp` 里 `app.use(...)` 挂载；敏感操作配好 `requireUser` / `requireRunner` 等。
 - **新配置**：在 `src/config/` 增加模块，并从 `getEnv()` 或统一 config 出口读取；密钥只走环境变量（见 `env-secrets`）。
-- **与 `apps/web` 契约**：REST 路径、状态码、错误体形状与前端 `src/api/client.ts` 保持一致。
+- **与 `apps/web` 契约**：REST 路径、状态码、错误体形状与前端 **`apps/web/src/api/`**（聚合入口 **`src/api/index.ts`**）保持一致；**JSON 负载与响应的领域类型**以 **`@agents/shared-types`** 为单一来源，路由侧可用 **`import type`** 对齐返回值与校验逻辑。
 - 可抽离到 monorepo 的多应用共用能力，遵循根目录 **`packages/`** 约定。
