@@ -103,5 +103,6 @@
 | 2026-05-14 | **第一期 backlog 缺口收口（优先级 6 / 18）** | **`apps/web`**：**项目删除**（确认对话框 + `DELETE /projects/:id`）；**当前项目持久化**：**Zustand + `persist`（localStorage）** 维护 `currentProjectId`，嵌套路由 **`ProjectWorkspaceLayout`** 在进入 `/projects/:projectId/{chat,config,tasks}` 时同步；新建项目成功写入「当前项目」；列表页 **记住的项目** 快捷入口；删除命中时清空记住 ID | — | 与上文「第一期自检」更易对齐；**流式**：仍以 API **SSE 占位**为主，**WebSocket** 按二期/产品需求再定 |
 | 2026-05-14 | **Python Runner 技术选型定稿 + 文档模块化** | 新增 [**agents-runner-tech-stack**](./agents-runner-tech-stack.md)、[**agents-learning**](./agents-learning.md)、[**agents-challenges**](./agents-challenges.md)；**第二期**「依赖与技术栈」小节改为指向定稿文档；**根 README / docs 索引** 已增加上述入口 | **向量库**：**Qdrant / pgvector** 在 `pyproject` 中以 **extras** 预留 | **`agents/runner/`** 目录已预留 |
 | 2026-05-14 | **`agents/runner` Python 工程初始化** | **`pyproject.toml`**、**`src/runner/`** 分层、**`NodeApiClient`**、**SSE 占位**、`README` / **`.env.example`**；**`uv.lock`** 提交 | `.venv` 勿提交；无 `uv` 时可用 **`pip install -e ".[dev]"`** | 与定稿选型一致；文档见 [技术选型 · 仓库布局](./agents-runner-tech-stack.md#runner-repo-layout)；**单元测试目录已按当前阶段移除** |
+| 2026-05-15 | **Agent 学习与文档索引** | 新增 [**Agent / Python 一日学习计划**](./agents-learning-day-plan.md)（整日/半日排期、Runner 走读顺序、自测与勾选清单）；[**agents-learning**](./agents-learning.md) 增加「一日强化」小节；[**docs/README**](./README.md)、仓库根 [**README**](../README.md) 文档地图已挂链 | — | 便于第二期编码前集中学习与联调彩排 |
 
 ← [返回文档索引](./README.md)

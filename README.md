@@ -21,6 +21,7 @@
 | [模块说明：桌面 · API · Agents](./docs/module-topology.md) | `apps/desktop`、`apps/api`、`agents/*`、共享契约 |
 | [Python Runner 技术选型（定稿）](./docs/agents-runner-tech-stack.md) | FastAPI、httpx、LangGraph+LangChain、LlamaIndex（检索）、SSE、uv |
 | [Agent 学习模块](./docs/agents-learning.md) | 三栈练习边界与阅读顺序 |
+| [Agent / Python 一日学习计划](./docs/agents-learning-day-plan.md) | 整日/半天排期、走读顺序、自测与勾选清单 |
 | [Agent 难点与坑点](./docs/agents-challenges.md) | Runner/Python 专项坑点 |
 | [坑点与对策](./docs/pitfalls.md) | CI、流式、Agent 拓扑、产品与编排 |
 | [高并发](./docs/high-concurrency.md) | 队列分区、无状态 API、背压与幂等 |
