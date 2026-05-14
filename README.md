@@ -40,7 +40,7 @@
 |------|------|
 | [apps/api](./apps/api/README.md) | 云端 Express：迁移、Redis、BullMQ、本地运行命令 |
 | apps/desktop | （待建）Electrobun + React；设计见 [module-topology](./docs/module-topology.md) |
-| [agents/runner](./agents/runner/)（占位） | Python Runner；**技术选型**见 [agents-runner-tech-stack](./docs/agents-runner-tech-stack.md) |
+| [agents/runner](./agents/runner/) | Python Runner（**已初始化**：`pyproject` + `src/runner`）；说明见 [agents/runner README](./agents/runner/README.md) |
 
 ---
 

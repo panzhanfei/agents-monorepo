@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agents-runner"
+version = "0.1.0"
+description = "本机 Python Runner：FastAPI、LangGraph/LangChain、LlamaIndex（检索）；数据面经 httpx 访问 Node API"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi[standard]>=0.115.0",
+  "uvicorn[standard]>=0.32.0",
+  "pydantic>=2.10.0",
+  "pydantic-settings>=2.6.0",
+  "httpx>=0.28.0",
+  "python-dotenv>=1.0.1",
+  "structlog>=24.4.0",
+  "langchain>=0.3.0",
+  "langchain-core>=0.3.0",
+  "langgraph>=0.2.0",
+  "llama-index-core>=0.12.0",
+  "litellm>=1.55.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3.0", "pytest-asyncio>=0.25.0", "ruff>=0.8.0"]
+vector-qdrant = [
+  "llama-index-vector-stores-qdrant>=0.4.0",
+  "qdrant-client>=1.12.0",
+]
+vector-pg = [
+  "llama-index-vector-stores-postgres>=0.3.0",
+  "asyncpg>=0.30.0",
+  "pgvector>=0.3.0",
+]
+
+[project.scripts]
+agents-runner = "runner.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100

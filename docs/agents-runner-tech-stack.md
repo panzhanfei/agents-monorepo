@@ -17,11 +17,30 @@
 | **向量存储** | **实现期二选一锁定**：**Qdrant** 或 **pgvector** | 与现有 Postgres 强绑定可偏 **pgvector**；独立检索服务可偏 **Qdrant**；选定后写入本文或 ADR |
 | **模型调用** | **LiteLLM** 或 **单厂商官方 async SDK** | 多模型与网关练习优先 LiteLLM |
 | **实时（Runner → 本机客户端）** | **SSE** 为主 | 流式 token、日志、进度事件；不足再评估 **WebSocket** |
-| **工程化（脚手架阶段即具备）** | **pytest** + **结构化日志**（stdlib JSON 或 **structlog**） | 可选后续：**OpenTelemetry** / Langfuse 等 |
+| **工程化** | **结构化日志**（**structlog**）；**单元测试**按排期后续再加（`extra dev` 中可保留 pytest 依赖） | 可选后续：**OpenTelemetry** / Langfuse 等 |
 
 ## 刻意不包含
 
 - **业务库 ORM / Prisma / 直连 Postgres 业务表**：归属 **`apps/api`**，Runner 不得引用。
+
+<a id="runner-repo-layout"></a>
+
+## 仓库布局与文件职责（实现）
+
+代码根目录：**[`agents/runner/`](../agents/runner/)**（含 **`pyproject.toml`**、`README`、**`src/runner/`** 分层）。
+
+| 路径（相对 `agents/runner`） | 职责 |
+|-----------------------------|------|
+| **`pyproject.toml`** | 已对齐本页选型：FastAPI、uvicorn、httpx、Pydantic、structlog、LangChain、LangGraph、llama-index-core、LiteLLM；**`extra dev`**（ruff，及预留 pytest）；**`extra vector-qdrant`** / **`extra vector-pg`**（两种向量库路径，实现期二选一启用）。 |
+| **`uv.lock`** | 由 **`uv lock`** 生成后提交，保证可复现安装（若当前缺失，在子目录执行一次即可）。 |
+| **`.env.example`** | `RUNNER_*` 环境变量说明（无密钥）。 |
+| **`src/runner/config/`** | **`pydantic-settings`** 读取配置。 |
+| **`src/runner/interfaces/`** | FastAPI **`create_app`**、路由、SSE 占位等。 |
+| **`src/runner/application/`** | LangGraph 用例编排（随功能增量）。 |
+| **`src/runner/domain/`** | 领域规则与类型。 |
+| **`src/runner/infrastructure/`** | **NodeApiClient（httpx）**、structlog 初始化；后续 LLM/向量适配。 |
+
+更细的命令与说明见 [**`agents/runner/README.md`**](../agents/runner/README.md)。
 
 ## 相关文档
 

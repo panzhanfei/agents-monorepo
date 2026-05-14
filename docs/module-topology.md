@@ -36,9 +36,11 @@
 
 各 Agent **运行在用户侧 Runner**，与 Express 之间为 **任务投递与回调**（如队列 + Runner 拉取、或 Runner 对控制面暴露的受控 HTTP）；须 **拒绝** 任何未与 **`userId` + `projectId` + 已登记 Runner** 绑定的裸路径。返回结构化 JSON；流式可由 Runner **回传** 至 Express 再转前端。
 
-**技术选型（定稿，2026-05-14）**：见 [**Python Runner 技术选型**](./agents-runner-tech-stack.md）。摘要：**FastAPI + Uvicorn**（本机 **`127.0.0.1`**）、**Pydantic**、**httpx** 调 Node；编排 **LangGraph + LangChain**；检索与 RAG **LlamaIndex**；实时 **SSE** 为主；**LiteLLM** 或官方 SDK 接模型；向量库 **Qdrant / pgvector** 实现期二选一。练习路径与边界见 [Agent 学习模块](./agents-learning.md)；专项坑点见 [Agent 难点与坑点](./agents-challenges.md)。
+**技术选型（定稿，2026-05-14）**：见 [**Python Runner 技术选型**](./agents-runner-tech-stack.md）。摘要：**FastAPI + Uvicorn**（本机 **`127.0.0.1`**）、**Pydantic**、**httpx** 调 Node；编排 **LangGraph + LangChain**；检索与 RAG **LlamaIndex**；实时 **SSE** 为主；**LiteLLM** 或官方 SDK 接模型；向量库 **Qdrant / pgvector** 实现期二选一（`pyproject` 已提供 **`extra vector-qdrant`** / **`extra vector-pg`**）。练习路径与边界见 [Agent 学习模块](./agents-learning.md)；专项坑点见 [Agent 难点与坑点](./agents-challenges.md)。
 
-**uv 约定（落地时）**：每个 Agent 目录（或 monorepo 级 workspace）维护 `pyproject.toml`；本地 `uv sync` 安装依赖，`uv run pytest` / `uv run uvicorn ...` 运行与测试；不把 `venv/` 提交进 Git，由 `uv.lock` 保证可复现构建。
+**工程目录（已初始化）**：[`agents/runner/README.md`](../agents/runner/README.md)（命令、`src/runner/` 各层职责、与 **`RUNNER_*`** 环境变量）。
+
+**uv 约定（落地时）**：每个 Agent 目录（或 monorepo 级 workspace）维护 `pyproject.toml`；本地 `uv sync` 安装依赖，`uv run agents-runner` / `uv run uvicorn ...` 运行；不把 `venv/` 提交进 Git，由 `uv.lock` 保证可复现构建。
 
 | Agent | 职责概要 |
 |--------|----------|

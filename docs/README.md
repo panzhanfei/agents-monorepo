@@ -30,3 +30,4 @@
 | 路径 | 说明 |
 |------|------|
 | [apps/api README](../apps/api/README.md) | Express 本地启动、迁移、Worker |
+| [agents/runner README](../agents/runner/README.md) | Python Runner：`uv`/`pytest`、目录职责、`RUNNER_*` 环境变量 |

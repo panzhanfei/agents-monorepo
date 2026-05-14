@@ -39,3 +39,10 @@ yarn-error.log*
 
 # 本地日志或临时目录（可选）
 logs/
+
+# Python / uv（agents/* Runner）
+**/.venv/
+**/__pycache__/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
