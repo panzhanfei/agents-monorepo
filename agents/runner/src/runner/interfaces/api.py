@@ -14,7 +14,11 @@ from runner.interfaces.routes import health, stream
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
-    node = NodeApiClient(settings.node_api_base)
+    node = NodeApiClient(
+        settings.node_api_base,
+        device_key=settings.device_key,
+        device_secret=settings.device_secret,
+    )
     app.state.node_client = node
     yield
     await node.aclose()

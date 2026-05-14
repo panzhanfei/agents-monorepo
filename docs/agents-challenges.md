@@ -33,6 +33,7 @@
 |------|------|------|
 | **DTO 双源** | Python Pydantic 与 TS 类型不一致 | **OpenAPI 或 Schema 单源**；生成或 CI diff（见 [pitfalls · 契约](./pitfalls.md)） |
 | **幂等与重试** | 网络抖动导致重复写 | 与 Node 约定 **`Idempotency-Key` / `runId`**；Runner 侧读响应再决断 |
+| **Agent 槽位配置过时（Runner）** | **原因**：用户在设置页**后增 / 后改**某槽位（如先只配 `router`，再配 `coder`），或改模型与 key；若 Runner **仅在启动时拉一次**或长期缓存不失效，会继续按**旧快照**调 LLM，表现为「网页已保存但本机仍报错/仍用旧模型」。密钥也不能仿浏览器走用户 JWT，Runner 需独立鉴权。 | **方案**：**`GET /v1/runner/agent-slots`**（`requireRunner`）**批量**返回含 **apiKey** 的槽位；**任务认领前或新任务开始时**再拉，必要时每次拉**不传 `keys` 的全量**以保证与用户设置同步；用 **`configRevision` + `If-None-Match`** 在未变更时 **304** 省流量。修订号按**本次请求的 keys 集合**计算，避免只订 `router` 时被无关槽位变更误伤或漏刷新。实现见 `apps/api/src/routes/runnerV1.ts`、`agents/runner/src/runner/infrastructure/node_client.py`；概念与表格式说明见 [学习模块](./agents-learning.md) 中的「控制面槽位配置（Runner 必会）」一节。 |
 
 ## 打包与运维（桌面）
 

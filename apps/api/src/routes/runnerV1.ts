@@ -1,3 +1,10 @@
+import { AGENT_SLOT_KEYS } from "@agents/shared-types";
+import type {
+  IAgentSlotKey,
+  IRunnerAgentSlotSecret,
+  IRunnerAgentSlotsResponse,
+} from "@agents/shared-types";
+import type { UserAgentSlotConfig } from "@prisma/client";
 import { Router } from "express";
 import type { RequestHandler } from "express";
 import { z } from "zod";
@@ -16,6 +23,103 @@ const completeSchema = z.object({
 const failSchema = z.object({
   errorSummary: z.string().max(8000).optional(),
 });
+
+const stripEtagQuotes = (raw: string): string => {
+  let s = raw.trim();
+  if (s.startsWith("W/")) {
+    s = s.slice(2).trim();
+  }
+  if (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) {
+    s = s.slice(1, -1);
+  }
+  return s;
+};
+
+const parseSlotKeysQuery = (param: unknown): IAgentSlotKey[] => {
+  if (param === undefined || param === null) {
+    return [...AGENT_SLOT_KEYS];
+  }
+  let raw: string;
+  if (Array.isArray(param)) {
+    if (param.length === 0 || typeof param[0] !== "string") {
+      throw new HttpError(400, "validation_error", "Invalid keys query");
+    }
+    raw = param[0];
+  } else if (typeof param === "string") {
+    raw = param;
+  } else {
+    throw new HttpError(400, "validation_error", "Invalid keys query");
+  }
+  if (raw.trim() === "") {
+    return [...AGENT_SLOT_KEYS];
+  }
+  const parts = raw.split(",").map((s) => s.trim()).filter(Boolean);
+  const unique = [...new Set(parts)];
+  const invalid = unique.filter((p) => !AGENT_SLOT_KEYS.includes(p as IAgentSlotKey));
+  if (invalid.length > 0) {
+    throw new HttpError(400, "validation_error", `Invalid keys: ${invalid.join(", ")}`);
+  }
+  return unique as IAgentSlotKey[];
+};
+
+const buildAgentSlotsRevision = (
+  keys: IAgentSlotKey[],
+  byKey: Map<string, Pick<UserAgentSlotConfig, "updatedAt">>,
+): string =>
+  [...keys]
+    .sort((a, b) => a.localeCompare(b))
+    .map((k) => {
+      const row = byKey.get(k);
+      return `${k}:${row ? row.updatedAt.toISOString() : "_"}`;
+    })
+    .join(";");
+
+const rowToRunnerSlotSecret = (row: UserAgentSlotConfig): IRunnerAgentSlotSecret => {
+  const mode = row.inferenceMode === "local" ? "local" : "hosted";
+  return {
+    mode,
+    model: row.modelId,
+    baseUrl: row.baseUrl ?? null,
+    hostedProvider: row.hostedProvider ?? null,
+    apiKey: row.apiKey ?? null,
+  };
+};
+
+const handleAgentSlots: RequestHandler = async (req, res, next) => {
+  try {
+    const runner = req.authRunner;
+    if (!runner) throw new HttpError(401, "unauthorized", "Unauthorized");
+
+    const keys = parseSlotKeysQuery(req.query.keys);
+    const rows = await prisma.userAgentSlotConfig.findMany({
+      where: { userId: runner.userId, slotKey: { in: keys } },
+    });
+    const byKey = new Map(rows.map((r) => [r.slotKey, r]));
+    const configRevision = buildAgentSlotsRevision(keys, byKey);
+
+    const inmRaw = req.headers["if-none-match"];
+    if (typeof inmRaw === "string") {
+      const inm = stripEtagQuotes(inmRaw);
+      if (inm === configRevision) {
+        res.setHeader("ETag", `"${configRevision}"`);
+        res.status(304).end();
+        return;
+      }
+    }
+
+    const slots: IRunnerAgentSlotsResponse["slots"] = {};
+    for (const k of keys) {
+      const row = byKey.get(k);
+      slots[k] = row ? rowToRunnerSlotSecret(row) : null;
+    }
+
+    const body: IRunnerAgentSlotsResponse = { configRevision, slots };
+    res.setHeader("ETag", `"${configRevision}"`);
+    res.json(body);
+  } catch (e) {
+    next(e);
+  }
+};
 
 const handleClaim: RequestHandler = async (req, res, next) => {
   try {
@@ -145,6 +249,7 @@ const handleFail: RequestHandler = async (req, res, next) => {
   }
 };
 
+runnerV1Router.get("/agent-slots", handleAgentSlots);
 runnerV1Router.post("/tasks/claim", handleClaim);
 runnerV1Router.patch("/tasks/:taskId/complete", handleComplete);
 runnerV1Router.patch("/tasks/:taskId/fail", handleFail);

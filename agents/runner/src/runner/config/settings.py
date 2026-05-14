@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8765
     node_api_base: str = "http://127.0.0.1:3000"
+    device_key: str = ""
+    device_secret: str = ""
     log_level: str = "INFO"
 
 
