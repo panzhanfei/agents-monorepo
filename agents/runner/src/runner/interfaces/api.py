@@ -14,9 +14,17 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from runner.config.settings import Settings, get_settings
 from runner.infrastructure.logging_config import configure_logging
-from runner.infrastructure.node_client import AgentSlotsNotModified, AgentSlotsPayload, NodeApiClient
-from runner.interfaces.routes import health, stream
-from runner.interfaces.routes.setup import clear_setup_token, router as setup_router, set_setup_token
+from runner.infrastructure.node_client import (
+    AgentSlotsNotModified,
+    AgentSlotsPayload,
+    NodeApiClient,
+)
+from runner.interfaces.routes import entry_chat, health, stream
+from runner.interfaces.routes.setup import (
+    clear_setup_token,
+    router as setup_router,
+    set_setup_token,
+)
 
 _log = structlog.get_logger(__name__)
 
@@ -55,7 +63,11 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         token = secrets.token_urlsafe(24)
         set_setup_token(token)
         bind_url = _runner_bind_url(settings, token)
-        _log.warning("runner_local_setup_pending", open_browser=settings.runner_setup_open_browser, setup_url=bind_url)
+        _log.warning(
+            "runner_local_setup_pending",
+            open_browser=settings.runner_setup_open_browser,
+            setup_url=bind_url,
+        )
         print("\n正在打开浏览器以完成本机环境准备（仅首次）。\n", flush=True)
         if settings.runner_setup_open_browser:
             await asyncio.to_thread(webbrowser.open, bind_url)
@@ -113,5 +125,6 @@ def create_app() -> FastAPI:
     application.include_router(health.router, tags=["health"])
     application.include_router(setup_router, prefix="/v1")
     application.include_router(stream.router, prefix="/v1", tags=["stream"])
+    application.include_router(entry_chat.router, prefix="/v1", tags=["agent"])
     application.state.settings = settings
     return application

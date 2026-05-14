@@ -1,3 +1,3 @@
-from runner.interfaces.routes import health, stream
+from runner.interfaces.routes import entry_chat, health, stream
 
-__all__ = ["health", "stream"]
+__all__ = ["entry_chat", "health", "stream"]
