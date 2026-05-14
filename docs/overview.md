@@ -45,7 +45,7 @@
 | 资源 | 说明 |
 |------|------|
 | **本目录** `docs/` | 仓库说明的 **拆分正文**；根目录 `README.md` 提供 **一页式文档地图** |
-| [v1 设计清单与实施进度](./v1-design-and-progress.md) | 库表 / Redis / 队列 / 实时通道 / JWT / 接口对照 + **进度表** |
+| [v1 设计清单与实施进度](./v1-design-and-progress.md) | 库表 / Redis / 队列 / 实时通道 / JWT / 接口对照；[**第一期 backlog**](./v1-design-and-progress.md#phase1-backlog)；[**实施进度表**](./v1-design-and-progress.md#implementation-progress) |
 | [Python Runner 技术选型](./agents-runner-tech-stack.md) | **定稿**：FastAPI、httpx、LangGraph+LangChain、LlamaIndex、SSE、uv |
 | [Agent 学习模块](./agents-learning.md) | 三栈练习边界与阅读顺序 |
 | [Agent 难点与坑点](./agents-challenges.md) | Runner / Python / RAG 专项难点 |

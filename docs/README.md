@@ -8,7 +8,7 @@
 |------|----------|
 | [总览与版本节奏](./overview.md) | 三层架构、阶段一/二/三、pnpm+uv、消息队列与 Runner 心跳（必选） |
 | [**实施分段（已定稿）**](./phased-delivery.md) | **第一期 Node+前端收口（Agent 仅占位）**；第二期 Agents 与半天～一天对齐门禁；本地→打包→上云顺序 |
-| [v1 设计清单与实施进度](./v1-design-and-progress.md) | 设计对照表；**第一期任务 backlog（优先级 1～22）**；实施进度（随记） |
+| [v1 设计清单与实施进度](./v1-design-and-progress.md) | 设计对照表；[**第一期任务 backlog（1～22）**](./v1-design-and-progress.md#phase1-backlog)；[**实施进度表（随记）**](./v1-design-and-progress.md#implementation-progress) |
 | [业务域：用户与多项目](./business-domain.md) | 工作区形态、Runner 安全与并发 |
 | [远程部署与 Electrobun 桌面](./remote-desktop-electrobun.md) | 云 + 本机职责边界、选型理由 |
 | [架构图与流程](./architecture-diagrams.md) | Mermaid：逻辑架构、时序、步骤流水线 |

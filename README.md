@@ -13,7 +13,7 @@
 | [README · Agent 细分 / 少进程 / 解耦](#agent-subroles-runner-decouple) | **逻辑角色（①～⑫）**、Runner 四进程映射、解耦边界表 |
 | [总览与版本节奏](./docs/overview.md) | 三层架构表、阶段一/二/三、pnpm+uv、**消息队列与 Runner 心跳**（必选） |
 | [实施分段（已定稿）](./docs/phased-delivery.md) | **一期 Node+前端（Agent 路由占位固定返回）**；二期 Agents + 联调前 **半天～一天对齐**；本地→打包/H5→上云 |
-| [v1 设计清单与实施进度](./docs/v1-design-and-progress.md) | 库表 / Redis / 队列 / JWT；**第一期 backlog 优先级 1～22（约 2～3 天）**；进度表 |
+| [v1 设计清单与实施进度](./docs/v1-design-and-progress.md) | 库表 / Redis / 队列 / JWT；[**第一期 backlog 1～22**](./docs/v1-design-and-progress.md#phase1-backlog)；[**实施进度表**](./docs/v1-design-and-progress.md#implementation-progress) |
 | [业务域：用户与多项目](./docs/business-domain.md) | `workspaceRoot`、多项目隔离、Runner 安全与并发 |
 | [远程部署与 Electrobun 桌面](./docs/remote-desktop-electrobun.md) | 云 + 本机职责边界、桌面选型 |
 | [架构图与端到端流程](./docs/architecture-diagrams.md) | Mermaid 逻辑图、时序图、步骤流水线 |

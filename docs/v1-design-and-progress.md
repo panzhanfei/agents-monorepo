@@ -78,6 +78,8 @@
 
 ---
 
+<a id="implementation-progress"></a>
+
 ## 实施进度（随做随记）
 
 以下 **只追加新行、尽量不改写旧行**（便于以后复盘）。日期可用 `YYYY-MM-DD` 或 `YYYY-MM-DD 晚` 等简短写法。
