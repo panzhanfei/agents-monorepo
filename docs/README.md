@@ -14,6 +14,9 @@
 | [架构图与流程](./architecture-diagrams.md) | Mermaid：逻辑架构、时序、步骤流水线 |
 | [运行时 Skill 分层](./runtime-skills.md) | 契约 / 编排 / 执行三层 |
 | [模块说明：桌面 · API · Agents](./module-topology.md) | 各层职责、与 `apps/api` 的链接 |
+| [**Python Runner 技术选型（定稿）**](./agents-runner-tech-stack.md) | FastAPI、httpx、LangGraph+LangChain、LlamaIndex（检索）、SSE、uv、工程化 |
+| [**Agent 学习模块**](./agents-learning.md) | 三栈练习边界、与 Node/分层约束、推荐阅读顺序 |
+| [**Agent 难点与坑点**](./agents-challenges.md) | Python Runner 专项：版本/双编排/RAG 隔离/SSE/契约/打包 |
 | [坑点与优先级小结](./pitfalls.md) | 契约、流式、安全、编排风险与对策 |
 | [高并发](./high-concurrency.md) | 队列、扩缩、背压、幂等 |
 | [清晰日志](./logging.md) | 结构化字段、脱敏、聚合；**第一期 Express 底线（traceId · pino · Worker）** |

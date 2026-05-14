@@ -1,0 +1,50 @@
+---
+description: agents/* 下 Python Runner（FastAPI）与 Agent 工作流约定
+globs: agents/**/*.{py,toml}
+alwaysApply: false
+---
+
+# Python Agents / Runner（`agents/*`）
+
+本目录为 **用户侧 Runner**：**FastAPI** 作本机 HTTP 入口（ **`127.0.0.1`** ，勿对公网 `0.0.0.0` 暴露产品级接口）；**数据库、会话、权限、任务状态、消息持久化** 均在 **`apps/api`（Node）**，Runner **不直连 DB**，通过 **`httpx`（推荐异步）** 调用 Node 已发布/内部契约的 API。**密钥与连接串** 遵守根目录 **`env-secrets.mdc`**；**输入校验、注入面、日志脱敏** 对齐 **`security-coding.mdc`**。
+
+## 分层（建议）
+
+| 层 | 职责 |
+|----|------|
+| **`interfaces/`** | FastAPI `app`、路由、依赖注入、请求/响应 **Pydantic** 模型。 |
+| **`application/`** | 用例编排：一次 run、流式阶段、**需要落库或配置时** 只通过 Node Client，**不**在路由内散落裸 HTTP。 |
+| **`domain/`** | 与 HTTP/SDK 无关的领域规则、状态结构（纯逻辑优先）。 |
+| **`infrastructure/`** | **Node API 客户端**（base URL、token、超时、重试、错误映射）、LLM SDK、本地文件/子进程等。 |
+
+跨进程契约与 Node 对齐：**OpenAPI / JSON Schema** 或团队约定的版本字段；**breaking 变更** 有升级路径。
+
+## 安全与 Agent 工作流
+
+- **工具（Tools）**：能力 **白名单**；路径/命令 **显式允许列表**；**禁止** 将用户长文当 shell 片段执行；工具返回与写盘内容设 **合理长度与类型上限**。
+- **提示与注入**：系统约束与用户内容 **在协议上分离**；不可信文本 **不** 当作策略或密钥来源。
+- **高风险操作**（删除、发布、扩权、大范围写盘）：**以 Node 鉴权与业务判定为准**；Runner 仅执行已授权载荷或上报结果；需要时由 Node 侧 **二次确认 token**，不在 Runner 内单点放行。
+- **错误对外**：响应与日志 **不** 泄露堆栈、内网地址、密钥片段。
+
+## 可靠性与编排
+
+- **超时**：LLM、Node API、子进程均设 **明确超时**；避免无界重试与无限循环调模型。
+- **幂等与去重**：`runId` / `stepId` / `Idempotency-Key` 等与 Node 约定一致，**重复投递不重复写**。
+- **状态真源**：任务生命周期以 **Node 持久化状态** 为准；Runner 通过 API **拉取或上报**，本地仅缓存必要时限与容错语义。
+
+## 可观测与质量
+
+- **结构化日志**：至少 `run_id`、（若可得）`user_id` / `project_id`、工具名、阶段、耗时、错误码；便于追踪与对接采集。
+- **Tracing（可选）**：单次 run 覆盖「读配置 → 推理 → 工具 → 回写 Node」。
+- **护栏**：对需严格结构的输出做 **Pydantic / schema** 校验；不达标则 **不** 当作成功结果写回或展示。
+
+## Python 工程习惯
+
+- **类型与边界**：对外 DTO、tool 参数、Node 请求体 **Pydantic** 或显式类型；跨边界避免裸 `dict` 深传。
+- **异步**：I/O（HTTP 流式、httpx）优先 **`async`**；CPU/阻塞子进程注意 **线程池/进程池**，避免阻塞事件循环。
+- **依赖**：**`pyproject.toml` + lockfile（如 `uv.lock`）**；**不** 提交 `venv/`；与 **`docs/module-topology.md`** 中 **uv** 约定一致。
+
+## 与 monorepo 其它部分
+
+- **Node 契约** 变更时同步更新 Runner 内 Client 与模型；**不** 在 Python 侧复制 DB schema 或业务规则。
+- **共享 JSON 形状**：优先以仓库 **契约源**（如 OpenAPI、`@agents/shared-types` 对齐文档）为准，避免「Node / Python 各写一套」。

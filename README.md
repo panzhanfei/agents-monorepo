@@ -19,6 +19,9 @@
 | [架构图与端到端流程](./docs/architecture-diagrams.md) | Mermaid 逻辑图、时序图、步骤流水线 |
 | [运行时 Skill 分层](./docs/runtime-skills.md) | 契约 / 编排 / Python 执行 |
 | [模块说明：桌面 · API · Agents](./docs/module-topology.md) | `apps/desktop`、`apps/api`、`agents/*`、共享契约 |
+| [Python Runner 技术选型（定稿）](./docs/agents-runner-tech-stack.md) | FastAPI、httpx、LangGraph+LangChain、LlamaIndex（检索）、SSE、uv |
+| [Agent 学习模块](./docs/agents-learning.md) | 三栈练习边界与阅读顺序 |
+| [Agent 难点与坑点](./docs/agents-challenges.md) | Runner/Python 专项坑点 |
 | [坑点与对策](./docs/pitfalls.md) | CI、流式、Agent 拓扑、产品与编排 |
 | [高并发](./docs/high-concurrency.md) | 队列分区、无状态 API、背压与幂等 |
 | [清晰日志](./docs/logging.md) | `traceId`、字段表、脱敏；[**第一期 API 底线**](./docs/logging.md#phase1-logging-baseline) |
@@ -37,7 +40,7 @@
 |------|------|
 | [apps/api](./apps/api/README.md) | 云端 Express：迁移、Redis、BullMQ、本地运行命令 |
 | apps/desktop | （待建）Electrobun + React；设计见 [module-topology](./docs/module-topology.md) |
-| agents/* | （待建）Runner 内 Agent；见 [module-topology](./docs/module-topology.md) |
+| [agents/runner](./agents/runner/)（占位） | Python Runner；**技术选型**见 [agents-runner-tech-stack](./docs/agents-runner-tech-stack.md) |
 
 ---
 

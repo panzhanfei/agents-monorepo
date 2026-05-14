@@ -72,8 +72,8 @@
 
 ### 第二期（Agents）日历与范围（粗估 · 细则第二期开局敲定）
 
-- **量级占位**：约 **10～14 个工作日**（Python Runner、`agents/*`、真实消费与回写；含与现有 Node、`apps/web` 联调）。**非合同工期**：须在第二期 **架构 / 选型 / 流程** 定型后重拍里程碑。  
-- **第二期开局须先定型**：Agents **整体技术架构**、依赖与 **技术选型**、**步骤与状态流转**、少进程 vs 多进程边界；结论进 ARCHITECTURE / ADR / OpenAPI 后再大规模编码。  
+- **量级占位**：约 **10～14 个工作日**（Python Runner、`agents/*`、真实消费与回写；含与现有 Node、`apps/web` 联调）。**非合同工期**：须在第二期 **流程 / 少进程边界** 等未决项定型后重拍里程碑。  
+- **技术选型**：**已定稿**并维护于 [**Python Runner 技术选型**](./agents-runner-tech-stack.md)（2026-05-14）；**步骤与状态流转**、少进程 vs 多进程、OpenAPI 细节仍须在第二期开局与 [ARCHITECTURE](./ARCHITECTURE.md) 对齐后再大规模编码。  
 - **不含**：第一期控制面重写；进入编码前须完成 [第二期门禁](./phased-delivery.md#phase2-agents) 中的对齐梳理。
 
 ---
@@ -96,8 +96,9 @@
 | 2026-05-13 | **阶段衔接**：第一期后再做 Agents | Node + `apps/web` **闭环后再** 细分 Agents、梳理契约与排期；不与第一期并行铺开 | — | 见 [phased-delivery · 第二期](./phased-delivery.md#phase2-agents) |
 | 2026-05-13 | **平台层 v1（不含 Agent）阶段性收口** | Node + `apps/web`：**注册 / 登录 / refresh、`GET /auth/me`、access JWT、前端受保护请求遇 `401` 静默续签**；鉴权中间件、路由与配置面可用 | Agent 模型 / 推理探测 / 编排等 **不计入本条「平台 v1」边界**，与第二期并行草稿区隔 | **2026-05-14 起**：转入 **Agent 相关**开发，并按 [第二期门禁](./phased-delivery.md#phase2-agents) 对齐契约与排期 |
 | 2026-05-14 | **日历拍板** | 第一期 Node + React **`apps/web`：2 个工作日**（backlog 全量不砍） | — | 第二期 Agents：**10～14 个工作日**（含与前后端联调），见 [v1 · 第二期日历](./v1-design-and-progress.md#phase2-agents-calendar) |
-| 2026-05-14 | **第二期细则 defer** | Agents **架构 / 技术选型 / 流程细节** 第二期开局再定型；**10～14 天为粗估**，定型后重排里程碑 | — | 见 [phased-delivery · 第二期](./phased-delivery.md#phase2-agents) |
+| 2026-05-14 | **第二期：Python 技术栈已定稿** | **`agents/runner` Python 侧** 依赖与框架组合已定稿：见 [agents-runner-tech-stack](./agents-runner-tech-stack.md)；**流程细节、OpenAPI、ARCHITECTURE 步骤机** 仍第二期开局与实现同步收紧；**10～14 天为粗估** | — | **技术选型**与 **业务编排细则** 分层推进，避免混为一谈 |
 | 2026-05-13 晚 | **当日收尾** | Agent 配置（按槽）：**独立保存 / 丢弃草稿**、必填项靠前与 `*`、线上模式下 API Key 必填校验；`apps/web` API Base：**优先 `VITE_API_BASE_ONLINE`，否则本地默认** | — | **明日硬性**：Agents **工作流梳理与拆分** + **技术栈 / 框架选型**（产出简短书面结论，可进 ARCHITECTURE/ADR）；**力争启动**：首个 **入口 Agent（如 router）** 前后端打通 + **流式输出**（与既定 SSE/WebSocket 方向对齐，见 ARCHITECTURE §5） |
 | 2026-05-14 | **第一期 backlog 缺口收口（优先级 6 / 18）** | **`apps/web`**：**项目删除**（确认对话框 + `DELETE /projects/:id`）；**当前项目持久化**：**Zustand + `persist`（localStorage）** 维护 `currentProjectId`，嵌套路由 **`ProjectWorkspaceLayout`** 在进入 `/projects/:projectId/{chat,config,tasks}` 时同步；新建项目成功写入「当前项目」；列表页 **记住的项目** 快捷入口；删除命中时清空记住 ID | — | 与上文「第一期自检」更易对齐；**流式**：仍以 API **SSE 占位**为主，**WebSocket** 按二期/产品需求再定 |
+| 2026-05-14 | **Python Runner 技术选型定稿 + 文档模块化** | 新增 [**agents-runner-tech-stack**](./agents-runner-tech-stack.md)、[**agents-learning**](./agents-learning.md)、[**agents-challenges**](./agents-challenges.md)；**第二期**「依赖与技术栈」小节改为指向定稿文档；**根 README / docs 索引** 已增加上述入口 | **向量库**：**Qdrant / pgvector** 实现期二选一后写入技术选型文或 ADR | **`agents/runner/`** 目录已预留；实现期再补 `pyproject` 与源码 |
 
 ← [返回文档索引](./README.md)

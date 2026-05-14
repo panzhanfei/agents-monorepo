@@ -40,7 +40,7 @@
 
 **Agents 细分与排期**：进入第二阶段伊始（可与下文「对齐梳理」合并为同一天上半场），单独梳理：**Runner 进程数 vs 少进程多角色**、[README · Agent 细分](../README.md#agent-subroles-runner-decouple)、`agents/*` 包结构与 **里程碑排期**，结论写入 [v1 设计清单](./v1-design-and-progress.md)（新小节或追加表格均可）。
 
-**第二期开局再定型（未定细则暂不写在第一期尾声）**：**Agents 整体技术架构**、**技术选型**（框架与 SDK、`uv` 包划分）、**步骤流转与状态机细节**，均在第一期闭环完成后 **专场敲定**，再落到 ARCHITECTURE / OpenAPI / 排期表；下文「10～14 天」仅为 **量级占位**，随定型结果可调。
+**第二期开局仍须定型（与已实现文档区分开）**：**`agents/runner` 的 Python 依赖与框架组合** 已于 [Python Runner 技术选型](./agents-runner-tech-stack.md) **定稿**（2026-05-14）；**Runner 进程数、`uv` 多包划分、步骤流转与状态机细节、与 ARCHITECTURE / OpenAPI 的一一映射** 仍须在第一期闭环后的 **专场** 敲定后再大规模编码。下文「10～14 天」仅为 **量级占位**，随流程定型结果可调。
 
 **硬性门禁**：在进入本阶段 **大规模编写 Agents / Runner 之前**，预留 **半天～一整天**，做一次 **对齐梳理**，确认以下内容后再批量编码：
 
@@ -59,5 +59,6 @@
 
 - 详细设计清单与日常进度仍记在 [v1-design清单与实施进度](./v1-design-and-progress.md)。
 - Agent 逻辑角色与少进程映射见根目录 [README · Agent 章节](../README.md#agent-subroles-runner-decouple)。
+- **Python Runner 技术定稿**：[Python Runner 技术选型](./agents-runner-tech-stack.md)；**练习边界**：[Agent 学习模块](./agents-learning.md)；**专项坑点**：[Agent 难点与坑点](./agents-challenges.md)。
 
 ← [返回文档索引](./README.md)

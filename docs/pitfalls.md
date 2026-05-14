@@ -2,6 +2,8 @@
 
 以下为落地前即可预判的问题：**左列为风险或反模式，右列为推荐做法**。实施时把关键项写进 `ARCHITECTURE.md` 或 ADR，避免口头约定。
 
+**Python Runner / LangGraph+LangChain+LlamaIndex 专项**：见 [Agent 难点与坑点](./agents-challenges.md)（双编排、RAG 隔离、SSE、版本锁等）。**技术选型定稿**：见 [Python Runner 技术选型](./agents-runner-tech-stack.md)。
+
 ## 契约、版本与 CI
 
 | 坑点 / 不合理之处 | 优化方案 |
