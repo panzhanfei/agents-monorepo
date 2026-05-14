@@ -11,3 +11,4 @@ export * from "./projectsApi";
 export * from "./tasksApi";
 export * from "./runnersApi";
 export * from "./runnerChat";
+export * from "./projectChatApi";

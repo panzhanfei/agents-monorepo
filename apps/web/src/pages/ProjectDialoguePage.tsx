@@ -1,8 +1,15 @@
-import { useMemo, useState, type FormEvent } from "react";
-import { Box, Button, Card, Flex, Heading, ScrollArea, Text, TextField } from "@radix-ui/themes";
+import type { IAgentChatMessageRow } from "@agents/shared-types";
+import { useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { Box, Button, Card, Flex, Heading, ScrollArea, Spinner, Text, TextField } from "@radix-ui/themes";
 import { Link as RouterLink, useParams } from "react-router-dom";
 import { getRunnerBase, streamEntryAgentChat } from "@/api";
-import { useProjectsListQuery } from "@/hooks";
+import {
+  projectChatQueryKey,
+  useAppendProjectChatMessageMutation,
+  useProjectChatQuery,
+  useProjectsListQuery,
+} from "@/hooks";
 
 type ChatLine = {
   id: string;
@@ -10,11 +17,25 @@ type ChatLine = {
   text: string;
 };
 
+const rowsToLines = (messages: IAgentChatMessageRow[]): ChatLine[] => {
+  const out: ChatLine[] = [];
+  for (const m of messages) {
+    if (m.role === "user" || m.role === "assistant") {
+      out.push({ id: m.id, role: m.role, text: m.content });
+    }
+  }
+  return out;
+};
+
 export const ProjectDialoguePage = () => {
   const params = useParams();
   const projectId = params.projectId ?? "";
+  const qc = useQueryClient();
 
   const projectsQ = useProjectsListQuery();
+  const chatQ = useProjectChatQuery(projectId);
+  const appendM = useAppendProjectChatMessageMutation();
+
   const project = useMemo(
     () => (projectsQ.data ?? []).find((p) => p.id === projectId) ?? null,
     [projectsQ.data, projectId],
@@ -25,67 +46,111 @@ export const ProjectDialoguePage = () => {
   const [logLines, setLogLines] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
 
+  useEffect(() => {
+    if (sending) return;
+    if (!chatQ.data) {
+      setLines([]);
+      return;
+    }
+    setLines(rowsToLines(chatQ.data.messages));
+  }, [chatQ.data, sending]);
+
   const onSend = (e: FormEvent): void => {
     e.preventDefault();
-    if (sending) return;
+    if (sending || chatQ.isPending) return;
     const trimmed = input.trim();
-    if (!trimmed) return;
+    if (!trimmed || !projectId) return;
 
     const iso = new Date().toISOString();
-    const idBase = `${Date.now()}`;
+    const pendingAssistantId = `pending-${Date.now()}`;
+
     const payloadMessages = [
       ...lines
         .filter((m) => m.text.trim().length > 0)
-        .map((m) => ({ role: m.role, content: m.text })),
+        .map((m) => ({ role: m.role as "user" | "assistant", content: m.text })),
       { role: "user" as const, content: trimmed },
-    ].filter((m) => m.role === "user" || m.role === "assistant");
+    ];
 
     setSending(true);
     setInput("");
-    setLines((prev) => [
-      ...prev,
-      { id: `${idBase}-u`, role: "user", text: trimmed },
-      { id: `${idBase}-a`, role: "assistant", text: "" },
-    ]);
-    setLogLines((prev) => [...prev, `[${iso}] send → ${getRunnerBase()}/v1/agent/entry/chat`]);
 
-    void streamEntryAgentChat({
-      messages: payloadMessages,
-      projectId: projectId || undefined,
-      onToken: (tok) => {
-        setLines((prev) => {
-          const next = [...prev];
-          const last = next[next.length - 1];
-          if (last?.role === "assistant") {
-            next[next.length - 1] = { ...last, text: last.text + tok };
-          }
-          return next;
+    const run = async (): Promise<void> => {
+      let userSaved = false;
+      let assistantAcc = "";
+
+      const appendAssistantToApi = async (text: string): Promise<void> => {
+        const body = text.trim().length > 0 ? text : "（无输出）";
+        await appendM.mutateAsync({
+          projectId,
+          role: "assistant",
+          content: body,
         });
-      },
-      onLog: (line) => setLogLines((prev) => [...prev, line]),
-    })
-      .catch((err: unknown) => {
+      };
+
+      try {
+        const { message: userRow } = await appendM.mutateAsync({
+          projectId,
+          role: "user",
+          content: trimmed,
+        });
+        userSaved = true;
+
+        setLines((prev) => [
+          ...prev,
+          { id: userRow.id, role: "user", text: trimmed },
+          { id: pendingAssistantId, role: "assistant", text: "" },
+        ]);
+
+        setLogLines((prev) => [...prev, `[${iso}] send → ${getRunnerBase()}/v1/agent/entry/chat`]);
+
+        await streamEntryAgentChat({
+          messages: payloadMessages,
+          projectId,
+          onToken: (tok) => {
+            assistantAcc += tok;
+            setLines((prev) => {
+              const next = [...prev];
+              const last = next[next.length - 1];
+              if (last?.role === "assistant") {
+                next[next.length - 1] = { ...last, text: last.text + tok };
+              }
+              return next;
+            });
+          },
+          onLog: (line) => setLogLines((prev) => [...prev, line]),
+        });
+
+        await appendAssistantToApi(assistantAcc);
+      } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : "请求失败";
+        const merged =
+          assistantAcc.trim().length > 0
+            ? `${assistantAcc}\n\n（错误）${msg}`
+            : `（错误）${msg}`;
+        assistantAcc = merged;
         setLines((prev) => {
           const next = [...prev];
           const last = next[next.length - 1];
           if (last?.role === "assistant") {
-            next[next.length - 1] = {
-              ...last,
-              text:
-                last.text.trim().length > 0
-                  ? `${last.text}\n\n（错误）${msg}`
-                  : `（错误）${msg}`,
-            };
+            next[next.length - 1] = { ...last, text: merged };
           }
           return next;
         });
         setLogLines((prev) => [...prev, `[error] ${msg}`]);
-      })
-      .finally(() => {
+
+        if (userSaved) {
+          await appendAssistantToApi(merged);
+        }
+      } finally {
+        await qc.invalidateQueries({ queryKey: projectChatQueryKey(projectId) });
         setSending(false);
-      });
+      }
+    };
+
+    void run();
   };
+
+  const chatLoading = chatQ.isPending && lines.length === 0 && !sending;
 
   return (
     <Flex direction="column" gap="5">
@@ -101,9 +166,8 @@ export const ProjectDialoguePage = () => {
             {project ? ` · ${project.name}` : projectId ? ` · ${projectId}` : null}
           </Text>
           <Text color="gray" size="2" highContrast={false} mt="1">
-            本页走本机 Runner 入口 Agent（槽位 router）；地址 {getRunnerBase()} · 可用环境变量{" "}
-            VITE_RUNNER_BASE
-            覆盖默认端口。
+            消息保存在云端（按项目）。推理仍走本机 Runner（槽位 router）；{getRunnerBase()} · 可用{" "}
+            VITE_RUNNER_BASE 覆盖。
           </Text>
         </Box>
         <Flex gap="2" wrap="wrap" justify="end">
@@ -125,9 +189,21 @@ export const ProjectDialoguePage = () => {
           <Heading size="4" mb="3">
             会话
           </Heading>
+          {chatQ.isError ? (
+            <Text color="red" size="2" mb="2">
+              无法加载历史记录，请稍后重试。
+            </Text>
+          ) : null}
           <ScrollArea style={{ flex: 1 }} scrollbars="vertical">
             <Flex direction="column" gap="2" pr="2" pb="2">
-              {lines.length === 0 ? (
+              {chatLoading ? (
+                <Flex align="center" gap="2">
+                  <Spinner size="2" />
+                  <Text color="gray" size="2" highContrast={false}>
+                    正在加载历史消息…
+                  </Text>
+                </Flex>
+              ) : lines.length === 0 ? (
                 <Text color="gray" size="2" highContrast={false}>
                   尚无消息。请确认本机 agents-runner 已启动，并已在「Agent 配置」中填写 router
                   槽位的模型与网关。
@@ -161,10 +237,10 @@ export const ProjectDialoguePage = () => {
                   placeholder="输入消息后回车发送…"
                   value={input}
                   onChange={(evt) => setInput(evt.target.value)}
-                  disabled={sending}
+                  disabled={sending || chatQ.isPending}
                 />
               </Box>
-              <Button type="submit" disabled={sending}>
+              <Button type="submit" disabled={sending || chatQ.isPending}>
                 {sending ? "生成中…" : "发送"}
               </Button>
             </Flex>

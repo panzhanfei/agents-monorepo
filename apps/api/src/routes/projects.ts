@@ -4,9 +4,12 @@ import { z } from "zod";
 import { prisma, HttpError, requireUserIdOrThrow, pickRouteStringParam } from "@/lib";
 import { requireUser } from "@/middleware";
 
+import { projectChatRouter } from "./projectChat";
+
 export const projectsRouter = Router();
 
 projectsRouter.use(requireUser);
+projectsRouter.use("/:projectId/chat", projectChatRouter);
 
 const createSchema = z.object({
   name: z.string().min(1).max(200),

@@ -65,17 +65,30 @@ model RefreshToken {
 }
 
 model Project {
-  id            String   @id @default(cuid())
+  id            String             @id @default(cuid())
   userId        String
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   name          String
   workspaceRoot String
   gitUrl        String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
   tasks         Task[]
+  chatMessages  AgentChatMessage[]
 
   @@index([userId])
+}
+
+/// 项目级对话消息（入口 Agent 等）；按 createdAt 排序即为线程顺序。
+model AgentChatMessage {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  role      String
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([projectId, createdAt])
 }
 
 model RunnerDevice {

@@ -33,4 +33,11 @@ export type {
   ITaskRow,
   ITasksListResponse,
 } from "./tasks";
+export type {
+  IAgentChatAppendBody,
+  IAgentChatAppendResponse,
+  IAgentChatMessageRow,
+  IAgentChatMessagesResponse,
+  IAgentChatRole,
+} from "./projectChat";
 export type { IRunnerAgentSlotSecret, IRunnerAgentSlotsResponse } from "./runnerAgentSlots";
