@@ -83,11 +83,11 @@ export const RunnerRegisterPage = () => {
           Runner 注册（占位向导）
         </Heading>
         <Text color="gray" size="2" highContrast={false}>
-          第二期会替换为真实 Runner 引导。此处用于第一期闭环：{" "}
+          开发用：注册设备与心跳验收（
           <Code size="2" variant="soft">
             register → heartbeat → enqueue → claim
           </Code>
-          。
+          ）。日常使用时由本机程序自动完成环境准备，通常无需使用本页。
         </Text>
       </Box>
 

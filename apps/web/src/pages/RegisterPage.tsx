@@ -1,12 +1,14 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Button, Callout, Flex, TextField } from "@radix-ui/themes";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/auth";
 import { getMutationErrorMessage, useRegisterMutation } from "@/hooks";
+import { getPostAuthRedirectPath } from "@/utils/postAuthRedirect";
 import { AuthScreen } from "./AuthScreen";
 
 export const RegisterPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { accessToken } = useAuth();
   const register = useRegisterMutation();
   const [email, setEmail] = useState("");
@@ -19,9 +21,9 @@ export const RegisterPage = () => {
 
   useEffect(() => {
     if (accessToken) {
-      navigate("/projects", { replace: true });
+      navigate(getPostAuthRedirectPath(location.state), { replace: true });
     }
-  }, [accessToken, navigate]);
+  }, [accessToken, navigate, location.state]);
 
   const onSubmit = (e: FormEvent): void => {
     e.preventDefault();

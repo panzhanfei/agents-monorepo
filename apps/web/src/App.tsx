@@ -4,6 +4,7 @@ import { NavLink, Route, Routes } from "react-router-dom";
 import { useAuth } from "@/auth";
 import {
   AgentModelsPageLazy,
+  LocalInitPageLazy,
   LoginPageLazy,
   ProjectTasksPageLazy,
   ProjectDialoguePageLazy,
@@ -89,6 +90,7 @@ export const App = () => {
                   <Route path="tasks" element={<ProjectTasksPageLazy />} />
                 </Route>
                 <Route path="/runners" element={<RunnerRegisterPageLazy />} />
+                <Route path="/settings/local-init" element={<LocalInitPageLazy />} />
                 <Route path="/settings/agent-models" element={<AgentModelsPageLazy />} />
                 <Route path="/settings" element={<SettingsPageLazy />} />
               </Route>

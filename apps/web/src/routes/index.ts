@@ -3,6 +3,7 @@ export { ProjectWorkspaceLayout } from "./ProjectWorkspaceLayout";
 export { RouteFallback } from "./RouteFallback";
 export {
   AgentModelsPageLazy,
+  LocalInitPageLazy,
   LoginPageLazy,
   ProjectTasksPageLazy,
   ProjectDialoguePageLazy,

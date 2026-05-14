@@ -17,6 +17,27 @@ uv sync --extra dev --extra vector-qdrant
 uv run agents-runner    # 或：uv run uvicorn runner.interfaces.api:create_app --factory --host 127.0.0.1 --port 8765
 ```
 
+### 首次使用（推荐）
+
+1. 启动 **`apps/web`** 并**登录**（与 API 同一账号）。  
+2. 在 **`agents/runner`** 执行 **`uv run agents-runner`**。  
+3. 首次会在本机打开浏览器页面并**自动**完成环境准备（无需在页面上再点按钮）；完成后**重启一次** `agents-runner`。  
+4. 若未登录，请先登录；系统会回到该页面继续自动准备。
+
+若 Web 使用 `localhost` 而本机打开的是 `127.0.0.1`（或相反），请统一配置 **`RUNNER_SETUP_WEB_ORIGIN`** 与实际访问前端的 origin。
+
+### 备选：命令行注册
+
+适合无图形界面或自动化；需自行提供用户 JWT，见 **`agents-runner register --help`**。
+
+```bash
+export RUNNER_REGISTER_ACCESS_TOKEN='…JWT…'
+cd agents/runner
+uv run agents-runner register
+```
+
+凭据写入 **`~/.agents-runner/device.env`** 后再执行 **`uv run agents-runner`**。
+
 未安装 uv 时，可用 **`python -m venv .venv && pip install -e ".[dev]"`**，再在激活的 venv 中执行 **`python -m runner`**。
 
 首次安装若拉取 LangChain / LlamaIndex 等大包，耗时会较长，属正常现象。
@@ -25,13 +46,14 @@ uv run agents-runner    # 或：uv run uvicorn runner.interfaces.api:create_app 
 
 | 路径 | 职责 |
 |------|------|
-| **`__main__.py`** | CLI 入口：`uv run agents-runner`，内部 **`uvicorn`** 加载 **`create_app` 工厂**。 |
-| **`config/settings.py`** | **`pydantic-settings`**：从环境变量（前缀 **`RUNNER_`**）读取 host/port、`node_api_base`、日志级别等。 |
-| **`interfaces/api.py`** | 组装 **FastAPI**、**lifespan**（挂载 **`NodeApiClient`**、进程退出时关闭）。 |
-| **`interfaces/routes/`** | HTTP 路由：如 **`/health`**、**`/v1/stream/example`**（SSE 占位）。 |
+| **`__main__.py`** | CLI：`agents-runner` 启动 **`uvicorn`**；子命令 **`agents-runner register`** 向 Node 注册并写入 `~/.agents-runner/device.env`。 |
+| **`config/settings.py`** | **`pydantic-settings`**：环境变量（前缀 **`RUNNER_`**）、项目 **`.env`**、用户 **`~/.agents-runner/device.env`**。 |
+| **`interfaces/api.py`** | **FastAPI**、`lifespan`、**一键绑定**（链接 / 可选打开浏览器）、**CORS**、**`NodeApiClient`**。 |
+| **`interfaces/routes/`** | **`/health`**、**`/v1/stream/example`**、**`/v1/setup/ingest`**（Web 回写凭据）。 |
 | **`application/`** | 用例编排：后续放 **LangGraph** 图构建与 invoke；**不**在路由里散落业务 HTTP。 |
 | **`domain/`** | 领域规则与类型（与 HTTP/ SDK 解耦）。 |
-| **`infrastructure/node_client.py`** | **httpx** 访问 Node 的客户端占位，具体路径与鉴权头随 OpenAPI 对接扩展。 |
+| **`cli/register.py`** | **`agents-runner register`**（无浏览器时的备选）。 |
+| **`infrastructure/node_client.py`** | **httpx** 访问 Node：`/v1/runner/*`、`agent-slots` 等。 |
 | **`infrastructure/logging_config.py`** | **结构化日志（structlog + JSON）** 初始化。 |
 
 根目录 **`pyproject.toml`**：运行时依赖已对齐定稿选型（含 FastAPI、httpx、LangChain、LangGraph、llama-index-core、LiteLLM、structlog）；**`extra dev`**（ruff，及预留 **pytest** 依赖）；**`extra vector-qdrant`** / **`extra vector-pg`** 对应两种向量库路径。**锁文件 `uv.lock`** 与上述 extras 一致；若仅改动了 `pyproject.toml`，请在 `agents/runner` 内执行 **`uv lock`** 后提交更新后的 `uv.lock`。

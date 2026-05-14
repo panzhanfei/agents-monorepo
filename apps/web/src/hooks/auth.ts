@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import type { IAuthPatchMeBody } from "@agents/shared-types";
 import { ApiError, fetchMe, patchAuthMe, postLogin, postRegister, type ILoginBody } from "@/api";
 import { useAuth } from "@/auth";
 import { queryKeys } from "@/query/keys";
+import { getPostAuthRedirectPath } from "@/utils/postAuthRedirect";
 
 export const useMeQuery = () => {
   const { accessToken } = useAuth();
@@ -18,6 +19,7 @@ export const useMeQuery = () => {
 export const useLoginMutation = () => {
   const { setSession } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const qc = useQueryClient();
 
   return useMutation({
@@ -26,7 +28,7 @@ export const useLoginMutation = () => {
       setSession(res.accessToken, res.refreshToken, res.user);
       qc.setQueryData(queryKeys.auth.me, { user: res.user });
       void qc.invalidateQueries({ queryKey: queryKeys.auth.me });
-      navigate("/projects", { replace: true });
+      navigate(getPostAuthRedirectPath(location.state), { replace: true });
     },
   });
 };
@@ -34,6 +36,7 @@ export const useLoginMutation = () => {
 export const useRegisterMutation = () => {
   const { setSession } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const qc = useQueryClient();
 
   return useMutation({
@@ -42,7 +45,7 @@ export const useRegisterMutation = () => {
       setSession(res.accessToken, res.refreshToken, res.user);
       qc.setQueryData(queryKeys.auth.me, { user: res.user });
       void qc.invalidateQueries({ queryKey: queryKeys.auth.me });
-      navigate("/projects", { replace: true });
+      navigate(getPostAuthRedirectPath(location.state), { replace: true });
     },
   });
 };

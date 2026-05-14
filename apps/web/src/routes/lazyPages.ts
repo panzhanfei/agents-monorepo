@@ -32,6 +32,10 @@ export const RunnerRegisterPageLazy = lazy(() =>
   import("@/pages/RunnerRegisterPage").then((m) => ({ default: m.RunnerRegisterPage })),
 );
 
+export const LocalInitPageLazy = lazy(() =>
+  import("@/pages/LocalInitPage").then((m) => ({ default: m.LocalInitPage })),
+);
+
 export const SettingsPageLazy = lazy(() =>
   import("@/pages/SettingsPage").then((m) => ({ default: m.SettingsPage })),
 );

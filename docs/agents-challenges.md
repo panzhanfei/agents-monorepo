@@ -35,6 +35,22 @@
 | **幂等与重试** | 网络抖动导致重复写 | 与 Node 约定 **`Idempotency-Key` / `runId`**；Runner 侧读响应再决断 |
 | **Agent 槽位配置过时（Runner）** | **原因**：用户在设置页**后增 / 后改**某槽位（如先只配 `router`，再配 `coder`），或改模型与 key；若 Runner **仅在启动时拉一次**或长期缓存不失效，会继续按**旧快照**调 LLM，表现为「网页已保存但本机仍报错/仍用旧模型」。密钥也不能仿浏览器走用户 JWT，Runner 需独立鉴权。 | **方案**：**`GET /v1/runner/agent-slots`**（`requireRunner`）**批量**返回含 **apiKey** 的槽位；**任务认领前或新任务开始时**再拉，必要时每次拉**不传 `keys` 的全量**以保证与用户设置同步；用 **`configRevision` + `If-None-Match`** 在未变更时 **304** 省流量。修订号按**本次请求的 keys 集合**计算，避免只订 `router` 时被无关槽位变更误伤或漏刷新。实现见 `apps/api/src/routes/runnerV1.ts`、`agents/runner/src/runner/infrastructure/node_client.py`；概念与表格式说明见 [学习模块](./agents-learning.md) 中的「控制面槽位配置（Runner 必会）」一节。 |
 
+## 本机首次初始化：`RUNNER_SETUP_*` 两条（易踩坑）
+
+以下与 [学习模块](./agents-learning.md) 中「本机首次初始化：两个 Runner 环境变量（`RUNNER_SETUP_*`）」一节为同一主题；此处强调 **现象与对策**。
+
+**第 1 条：`RUNNER_SETUP_WEB_ORIGIN` 与浏览器登录地址不一致**
+
+- **现象**：Runner 自动打开控制台后 **未登录**、或登录后 **初始化不继续**；终端已提示打开浏览器，但用户感觉「流程断了」。
+- **原因**：**Cookie 按 Origin 隔离**，`http://127.0.0.1:5001` 与 `http://localhost:5001` **不共享**登录态；链接若用其中一个 Origin 打开，而用户平时在另一个里登录，就会错位。
+- **对策**：把 **`RUNNER_SETUP_WEB_ORIGIN`** 设成 **你本人实际用来打开 Web 的 Origin**（与地址栏一致）；团队/文档统一约定开发时用 **127.0.0.1** 或 **localhost** 之一，避免混用。
+
+**第 2 条：`RUNNER_SETUP_ALLOW_ORIGINS` 未覆盖当前页 Origin**
+
+- **现象**：浏览器 **开发者工具 → Network** 里看到对 `http://127.0.0.1:8765`（或你配置的 Runner 端口）的 **`/v1/setup/ingest`** 请求 **被 CORS 拦截**；本机 `~/.agents-runner/device.env` 不出现或不全。
+- **原因**：浏览器 **安全策略**要求本机 Runner 返回的 `Access-Control-Allow-Origin` 与发起 `fetch` 的页面 Origin **完全一致**（白名单由 **`RUNNER_SETUP_ALLOW_ORIGINS`** 解析而来）。
+- **对策**：白名单写上 **实际访问前端时的 Origin**；若团队有人用 `localhost`、有人用 `127.0.0.1`，**两条都写进逗号列表**最省心。改完后需 **重启 `agents-runner`** 使 CORS 配置生效。
+
 ## 打包与运维（桌面）
 
 | 难点 | 说明 | 对策 |

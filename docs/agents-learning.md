@@ -27,6 +27,24 @@
 | **缓存与带宽** | 每次全量拉 JSON 浪费；无校验又易忘刷新 | 响应带 **`configRevision`**，请求可带 **`If-None-Match`**，未变则 **304**，沿用本地上一份 **`slots`** |
 | **修订号范围** | 只关心 `router` 时，不应因别人改了 `coder` 而被强行无效化，也不应出现「只拉 router 却长期 304」 | **`configRevision` 仅由本次请求的 `keys` 集合**对应的落库状态生成；拉全量键时，任一槽位变更都会推进修订号 |
 
+## 本机首次初始化：两个 Runner 环境变量（`RUNNER_SETUP_*`）
+
+首次在本机落 `device` 凭据时，Runner 会构造打开 **`apps/web`** 的地址，并在浏览器内自动向本机 **`POST /v1/setup/ingest`** 回写密钥；下列两项保证 **链接拼对** 且 **浏览器允许跨域访问本机 Runner**。配置在 **`agents/runner`**，环境变量前缀均为 **`RUNNER_`**，可写在项目 **`.env`** 或 **`~/.agents-runner/device.env`**（与 `pydantic-settings` 加载顺序一致）。
+
+**第 1 条：`RUNNER_SETUP_WEB_ORIGIN`**
+
+- **干什么用**：生成「首次初始化」时跳转的前端 **Origin**（协议 + 主机 + 端口，**无路径**）。须与你在浏览器里打开 **控制台** 的地址一致，否则用户已登录的 **Cookie 会话**与自动打开的页面对不上（看起来像「没登录」或初始化卡住）。
+- **怎么用**：与本机 Vite 配置对齐。例如 Web 跑在 `http://127.0.0.1:5001`，则设 `RUNNER_SETUP_WEB_ORIGIN=http://127.0.0.1:5001`；若你**始终**用 `http://localhost:5001` 登录，则改成 `http://localhost:5001`（**`localhost` 与 `127.0.0.1` 视为不同 Origin**）。默认值见 `agents/runner/src/runner/config/settings.py`、**`.env.example`**。
+
+**第 2 条：`RUNNER_SETUP_ALLOW_ORIGINS`**
+
+- **干什么用**：配置 **FastAPI `CORSMiddleware`** 的 **`Access-Control-Allow-Origin` 白名单**。浏览器里跑的 `LocalInitPage` 需向 **`http://127.0.0.1:<RUNNER_PORT>/v1/setup/ingest`** 发 `fetch`；若当前页的 Origin 不在白名单内，浏览器会拦截请求（控制台报 CORS 错误），本机凭据写不进去。
+- **怎么用**：填 **一个或多个** 前端 Origin，**英文逗号**分隔、无多余空格（或按 `.env` 惯例）。建议同时包含开发时常用的两种写法，例如：  
+  `RUNNER_SETUP_ALLOW_ORIGINS=http://127.0.0.1:5001,http://localhost:5001`  
+  与 **`RUNNER_SETUP_WEB_ORIGIN`** 中你实际采用的主机名保持一致，避免只配了其中一种导致另一种打不进来。
+
+初始化完成后，日常调用 Node（`agent-slots`、claim 等）仍依赖 **`RUNNER_DEVICE_KEY` / `RUNNER_DEVICE_SECRET`**（由本次流程或 `agents-runner register` 写入 **`~/.agents-runner/device.env`**），与上述两项 **分工不同**：`RUNNER_SETUP_*` 只服务 **「浏览器 ↔ 本机 Runner 」这一段**。
+
 ## 推荐阅读顺序（新人）
 
 1. [模块说明：桌面 · API · Agents](./module-topology.md) — 职责边界。  

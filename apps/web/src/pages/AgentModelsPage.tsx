@@ -31,22 +31,35 @@ const SLOT_META: readonly { key: IAgentSlotKey; label: string }[] = [
   { key: "ops", label: "构建与发布" },
 ];
 
-type ISlotDraft = {
-  mode: IAgentInferenceMode;
+type ISlotLocalDraft = {
   baseUrl: string;
-  hostedProvider: string;
   model: string;
+};
+
+type ISlotHostedDraft = {
+  baseUrl: string;
+  model: string;
+  hostedProvider: string;
   apiKeyDraft: string;
   clearApiKey: boolean;
 };
 
+type ISlotDraft = {
+  mode: IAgentInferenceMode;
+  local: ISlotLocalDraft;
+  hosted: ISlotHostedDraft;
+};
+
 const emptyDraft = (): ISlotDraft => ({
   mode: "local",
-  baseUrl: "",
-  hostedProvider: "",
-  model: "",
-  apiKeyDraft: "",
-  clearApiKey: false,
+  local: { baseUrl: "", model: "" },
+  hosted: {
+    baseUrl: "",
+    model: "",
+    hostedProvider: "",
+    apiKeyDraft: "",
+    clearApiKey: false,
+  },
 });
 
 const initialDraftRecord = (): Record<IAgentSlotKey, ISlotDraft> => {
@@ -57,36 +70,45 @@ const initialDraftRecord = (): Record<IAgentSlotKey, ISlotDraft> => {
 
 const draftsEqual = (a: ISlotDraft, b: ISlotDraft): boolean =>
   a.mode === b.mode &&
-  a.baseUrl === b.baseUrl &&
-  a.hostedProvider === b.hostedProvider &&
-  a.model === b.model &&
-  a.apiKeyDraft === b.apiKeyDraft &&
-  a.clearApiKey === b.clearApiKey;
+  a.local.baseUrl === b.local.baseUrl &&
+  a.local.model === b.local.model &&
+  a.hosted.baseUrl === b.hosted.baseUrl &&
+  a.hosted.model === b.hosted.model &&
+  a.hosted.hostedProvider === b.hosted.hostedProvider &&
+  a.hosted.apiKeyDraft === b.hosted.apiKeyDraft &&
+  a.hosted.clearApiKey === b.hosted.clearApiKey;
 
 /** `model` 为空时表示删除该槽配置；否则返回写入体。 */
 const patchBodyFromDraft = (d: ISlotDraft): IAuthPatchAgentSlotBody | null => {
-  if (!d.model.trim()) return null;
-  const baseTrim = d.baseUrl.trim();
-  const baseUrlVal = baseTrim === "" ? null : baseTrim;
   if (d.mode === "local") {
-    return { mode: "local", model: d.model.trim(), baseUrl: baseUrlVal };
+    if (!d.local.model.trim()) return null;
+    const baseTrim = d.local.baseUrl.trim();
+    const baseUrlVal = baseTrim === "" ? null : baseTrim;
+    return { mode: "local", model: d.local.model.trim(), baseUrl: baseUrlVal };
   }
-  const hp = d.hostedProvider.trim();
+  if (!d.hosted.model.trim()) return null;
+  const baseTrim = d.hosted.baseUrl.trim();
+  const baseUrlVal = baseTrim === "" ? null : baseTrim;
+  const hp = d.hosted.hostedProvider.trim();
   return {
     mode: "hosted",
-    model: d.model.trim(),
+    model: d.hosted.model.trim(),
     baseUrl: baseUrlVal,
     hostedProvider: hp === "" ? null : hp,
-    ...(d.clearApiKey ? { apiKey: null } : d.apiKeyDraft.trim() ? { apiKey: d.apiKeyDraft.trim() } : {}),
+    ...(d.hosted.clearApiKey
+      ? { apiKey: null }
+      : d.hosted.apiKeyDraft.trim()
+        ? { apiKey: d.hosted.apiKeyDraft.trim() }
+        : {}),
   };
 };
 
 const validateSlotBeforeSave = (d: ISlotDraft, serverSlot: IAgentSlotPublic | undefined): string | null => {
-  if (!d.model.trim()) return null;
   if (d.mode !== "hosted") return null;
+  if (!d.hosted.model.trim()) return null;
   const hasStoredKey = Boolean(serverSlot?.apiKeyConfigured);
-  const typedKey = d.apiKeyDraft.trim().length > 0;
-  if (!hasStoredKey && !typedKey && !d.clearApiKey) {
+  const typedKey = d.hosted.apiKeyDraft.trim().length > 0;
+  if (!hasStoredKey && !typedKey && !d.hosted.clearApiKey) {
     return "线上模式需提供 API Key（必填 · 当前尚无已存密钥）";
   }
   return null;
@@ -98,14 +120,31 @@ const draftFromServerSlots = (
   const next = initialDraftRecord();
   for (const k of AGENT_SLOT_KEYS) {
     const s = agentSlots[k];
-    next[k] = {
-      mode: s.mode,
-      baseUrl: s.baseUrl ?? "",
-      hostedProvider: s.hostedProvider ?? "",
-      model: s.model,
-      apiKeyDraft: "",
-      clearApiKey: false,
-    };
+    if (s.mode === "local") {
+      next[k] = {
+        mode: "local",
+        local: { baseUrl: s.baseUrl ?? "", model: s.model },
+        hosted: {
+          baseUrl: "",
+          model: "",
+          hostedProvider: "",
+          apiKeyDraft: "",
+          clearApiKey: false,
+        },
+      };
+    } else {
+      next[k] = {
+        mode: "hosted",
+        local: { baseUrl: "", model: "" },
+        hosted: {
+          baseUrl: s.baseUrl ?? "",
+          model: s.model,
+          hostedProvider: s.hostedProvider ?? "",
+          apiKeyDraft: "",
+          clearApiKey: false,
+        },
+      };
+    }
   }
   return next;
 };
@@ -114,10 +153,16 @@ const mergeSlotDraft = (
   prev: Record<IAgentSlotKey, ISlotDraft>,
   key: IAgentSlotKey,
   partial: Partial<ISlotDraft>,
-): Record<IAgentSlotKey, ISlotDraft> => ({
-  ...prev,
-  [key]: { ...prev[key], ...partial },
-});
+): Record<IAgentSlotKey, ISlotDraft> => {
+  const cur = prev[key];
+  const merged: ISlotDraft = {
+    ...cur,
+    ...partial,
+    local: partial.local ? { ...cur.local, ...partial.local } : cur.local,
+    hosted: partial.hosted ? { ...cur.hosted, ...partial.hosted } : cur.hosted,
+  };
+  return { ...prev, [key]: merged };
+};
 
 export const AgentModelsPage = () => {
   const meQ = useMeQuery();
@@ -205,7 +250,7 @@ export const AgentModelsPage = () => {
               </RouterLink>
             </Text>
             <Text color="gray" size="2" highContrast={false}>
-              每个槽位单独保存、单独丢弃草稿，便于只测某一个 Agent；必填项带 * 且靠前填写。
+              每个槽位单独保存、单独丢弃草稿，便于只测某一个 Agent；必填项带 * 且靠前填写。本地与线上各自的表单互不串数据。
             </Text>
           </Flex>
         </Box>
@@ -229,6 +274,8 @@ export const AgentModelsPage = () => {
           const slotErr = slotErrors[key];
           const savingThis =
             patchM.isPending && patchM.variables?.agentSlots && key in patchM.variables.agentSlots;
+          const modelValue = d.mode === "local" ? d.local.model : d.hosted.model;
+          const baseUrlValue = d.mode === "local" ? d.local.baseUrl : d.hosted.baseUrl;
 
           return (
             <Card key={key} size="2">
@@ -292,8 +339,15 @@ export const AgentModelsPage = () => {
                   <TextField.Root
                     id={`slot-${key}-model`}
                     placeholder={d.mode === "local" ? "如 qwen2.5:latest" : "如 gpt-4o"}
-                    value={d.model}
-                    onChange={(evt) => patchSlotDraft(key, { model: evt.target.value })}
+                    value={modelValue}
+                    onChange={(evt) =>
+                      patchSlotDraft(
+                        key,
+                        d.mode === "local"
+                          ? { local: { ...d.local, model: evt.target.value } }
+                          : { hosted: { ...d.hosted, model: evt.target.value } },
+                      )
+                    }
                   />
                   <Text size="1" color="gray" highContrast={false}>
                     留空则视为删除该槽配置；保存本槽将生效。
@@ -309,8 +363,15 @@ export const AgentModelsPage = () => {
                     placeholder={
                       d.mode === "local" ? "如 http://127.0.0.1:11434" : "可空则探测时用 api.openai.com"
                     }
-                    value={d.baseUrl}
-                    onChange={(evt) => patchSlotDraft(key, { baseUrl: evt.target.value })}
+                    value={baseUrlValue}
+                    onChange={(evt) =>
+                      patchSlotDraft(
+                        key,
+                        d.mode === "local"
+                          ? { local: { ...d.local, baseUrl: evt.target.value } }
+                          : { hosted: { ...d.hosted, baseUrl: evt.target.value } },
+                      )
+                    }
                   />
                 </Flex>
 
@@ -323,8 +384,10 @@ export const AgentModelsPage = () => {
                       <TextField.Root
                         id={`slot-${key}-provider`}
                         placeholder="如 openai"
-                        value={d.hostedProvider}
-                        onChange={(evt) => patchSlotDraft(key, { hostedProvider: evt.target.value })}
+                        value={d.hosted.hostedProvider}
+                        onChange={(evt) =>
+                          patchSlotDraft(key, { hosted: { ...d.hosted, hostedProvider: evt.target.value } })
+                        }
                       />
                     </Flex>
                     <Flex direction="column" gap="2">
@@ -351,11 +414,10 @@ export const AgentModelsPage = () => {
                             ? "留空保留原密钥；或填新密钥"
                             : "线上接口必填（尚无已存密钥）"
                         }
-                        value={d.apiKeyDraft}
+                        value={d.hosted.apiKeyDraft}
                         onChange={(evt) =>
                           patchSlotDraft(key, {
-                            apiKeyDraft: evt.target.value,
-                            clearApiKey: false,
+                            hosted: { ...d.hosted, apiKeyDraft: evt.target.value, clearApiKey: false },
                           })
                         }
                       />
@@ -367,8 +429,7 @@ export const AgentModelsPage = () => {
                           size="1"
                           onClick={() =>
                             patchSlotDraft(key, {
-                              apiKeyDraft: "",
-                              clearApiKey: true,
+                              hosted: { ...d.hosted, apiKeyDraft: "", clearApiKey: true },
                             })
                           }
                         >
@@ -400,7 +461,7 @@ export const AgentModelsPage = () => {
 
                 <InferenceTestBlock
                   slotKey={key}
-                  modelDraft={d.model}
+                  modelDraft={modelValue}
                   intro="基于该槽已保存的配置（若刚改表单请先按上方「保存此槽位」再测）。"
                 />
               </Flex>
