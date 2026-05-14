@@ -1,7 +1,7 @@
 import type { IAgentChatConversationRow, IAgentChatMessageRow } from "@agents/shared-types";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Box, Button, Card, Flex, Heading, Spinner, Text, TextField } from "@radix-ui/themes";
+import { Box, Button, Flex, Heading, Spinner, Text, TextField } from "@radix-ui/themes";
 import { Link as RouterLink, useParams, useSearchParams } from "react-router-dom";
 import { getRunnerBase, streamEntryAgentChat } from "@/api";
 import {
@@ -15,6 +15,10 @@ import {
   useProjectChatMessagesQuery,
   useProjectsListQuery,
 } from "@/hooks";
+
+/** 原生容器替代 Radix Card，避免 Card 内部样式把 flex/grid 子项高度算成 0、输入框被裁切 */
+const DIALOGUE_SHELL =
+  "flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-[var(--gray-a6)] bg-[var(--gray-a2)] shadow-[inset_0_1px_0_0_rgb(255_255_255/0.04)]";
 
 type ChatLine = {
   id: string;
@@ -43,6 +47,14 @@ const conversationRowLabel = (c: IAgentChatConversationRow): string => {
     minute: "2-digit",
   })}`;
 };
+
+const clampPct = (n: number): number => Math.max(0, Math.min(100, n));
+
+const tokenRemainingPct = (remaining: number, total: number): number =>
+  total <= 0 ? 0 : clampPct((remaining / total) * 100);
+
+const tokenBarColorVar = (remainingPct: number): string =>
+  remainingPct <= 10 ? "var(--red-9)" : remainingPct <= 28 ? "var(--amber-9)" : "var(--jade-9)";
 
 export const ProjectDialoguePage = () => {
   const params = useParams();
@@ -302,6 +314,11 @@ export const ProjectDialoguePage = () => {
       ? `${budgetRemaining} / ${budgetTotal}`
       : "—";
 
+  const tokenPct =
+    budgetRemaining !== null && budgetTotal !== null && budgetTotal > 0
+      ? tokenRemainingPct(budgetRemaining, budgetTotal)
+      : null;
+
   const conversations = conversationsQ.data?.conversations ?? [];
   const sidebarBusy =
     conversationsQ.isPending ||
@@ -309,14 +326,14 @@ export const ProjectDialoguePage = () => {
     (conversations.length === 0 && !conversationsQ.isError);
 
   return (
-    <Flex direction="column" gap="5">
-      <Flex align="start" justify="between" gap="4" wrap="wrap">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-5 overflow-hidden">
+      <Flex align="start" justify="between" gap="4" wrap="wrap" className="shrink-0">
         <Box>
           <Heading size="6" mb="1">
             对话
           </Heading>
           <Text color="gray" size="2" highContrast={false}>
-            <RouterLink to="/projects" style={{ color: "inherit" }}>
+            <RouterLink to="/projects" className="text-inherit">
               ← 返回项目列表
             </RouterLink>
             {project ? ` · ${project.name}` : projectId ? ` · ${projectId}` : null}
@@ -339,45 +356,28 @@ export const ProjectDialoguePage = () => {
       <Flex
         direction={{ initial: "column", lg: "row" }}
         gap="4"
-        style={{
-          alignItems: "stretch",
-          flex: 1,
-          minHeight: "min(70vh, 720px)",
-          minWidth: 0,
-        }}
+        className="min-h-[min(560px,calc(100dvh-10rem))] min-w-0 flex-1 items-stretch overflow-hidden"
       >
-        <Card
-          size="2"
-          style={{
-            flex: "0 0 auto",
-            width: "100%",
-            maxWidth: 308,
-            display: "flex",
-            flexDirection: "column",
-            minHeight: 0,
-          }}
+        <section
+          className={`${DIALOGUE_SHELL} max-h-[min(44vh,400px)] w-full max-w-[308px] flex-none self-stretch p-4 lg:max-h-none`}
         >
-          <Heading size="4" mb="2">
-            会话列表
-          </Heading>
-          <Button
-            type="button"
-            size="1"
-            variant="soft"
-            mb="2"
-            disabled={sending || sidebarBusy || !projectId}
-            onClick={() => void startNewConversationRound("manual")}
-          >
-            新会话
-          </Button>
-          <Box
-            style={{
-              flex: 1,
-              minHeight: 160,
-              overflowY: "auto",
-              WebkitOverflowScrolling: "touch",
-            }}
-          >
+          <div className="grid min-h-0 min-w-0 flex-1 grid-rows-[auto_minmax(12rem,1fr)] gap-3">
+            <Flex direction="column" className="min-h-0 shrink-0">
+              <Heading size="4" mb="2">
+                会话列表
+              </Heading>
+              <Button
+                type="button"
+                size="1"
+                variant="soft"
+                mb="0"
+                disabled={sending || sidebarBusy || !projectId}
+                onClick={() => void startNewConversationRound("manual")}
+              >
+                新会话
+              </Button>
+            </Flex>
+            <Box className="min-h-0 overflow-x-hidden overflow-y-scroll overscroll-y-contain [-webkit-overflow-scrolling:touch] touch-pan-y">
             {conversationsQ.isError ? (
               <Text color="red" size="2">
                 无法加载会话列表。
@@ -400,11 +400,11 @@ export const ProjectDialoguePage = () => {
                       direction="column"
                       gap="2"
                       p="2"
-                      style={{
-                        borderRadius: 8,
-                        borderLeft: c.pinned ? "3px solid var(--amber-9)" : "3px solid transparent",
-                        background: active ? "var(--accent-a3)" : "var(--gray-a2)",
-                      }}
+                      className={[
+                        "rounded-lg border-l-[3px]",
+                        c.pinned ? "border-l-[var(--amber-9)]" : "border-l-transparent",
+                        active ? "bg-[var(--accent-a3)]" : "bg-[var(--gray-a2)]",
+                      ].join(" ")}
                     >
                       {isEditing ? (
                         <Flex direction="column" gap="2">
@@ -460,24 +460,13 @@ export const ProjectDialoguePage = () => {
                               {c.pinned ? "取消置顶" : "置顶"}
                             </Button>
                             <Box
-                              style={{
-                                flex: "1 1 120px",
-                                minWidth: 0,
-                                cursor: "pointer",
-                              }}
+                              className="min-w-0 flex-[1_1_120px] cursor-pointer"
                               onClick={() =>
                                 setSearchParams({ conversationId: c.id }, { replace: true })
                               }
                             >
                               <Text size="2" weight={active ? "bold" : "medium"} asChild>
-                                <span
-                                  style={{
-                                    display: "block",
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                    whiteSpace: "nowrap",
-                                  }}
-                                >
+                                <span className="block overflow-hidden text-ellipsis whitespace-nowrap">
                                   {conversationRowLabel(c)}
                                 </span>
                               </Text>
@@ -519,171 +508,187 @@ export const ProjectDialoguePage = () => {
               </Flex>
             )}
           </Box>
-        </Card>
+          </div>
+        </section>
 
-        <Flex direction="column" gap="4" style={{ flex: "1 1 0%", minWidth: 0, minHeight: 0 }}>
+        <Flex direction="column" gap="4" className="min-h-0 min-w-0 flex-1 overflow-hidden">
           <Flex
             direction={{ initial: "column", md: "row" }}
             gap="4"
-            style={{ flex: 1, minHeight: 0, alignItems: "stretch" }}
+            className="min-h-0 min-w-0 flex-1 items-stretch overflow-hidden"
           >
-            <Card
-              size="2"
-              style={{
-                flex: "1 1 50%",
-                display: "flex",
-                flexDirection: "column",
-                minHeight: 0,
-              }}
-            >
-              <Heading size="4" mb="2">
-                会话
-              </Heading>
-              <Flex align="center" gap="3" wrap="wrap" mb="2">
-                <Text size="2" color="gray" highContrast={false}>
-                  本轮剩余 Token（估算）：<strong>{budgetLabel}</strong>
-                </Text>
-                <Button
-                  type="button"
-                  size="1"
-                  variant="soft"
-                  disabled={sending || sidebarBusy || !projectId}
-                  onClick={() => void startNewConversationRound("manual")}
-                >
-                  新会话
-                </Button>
-                <Button
-                  type="button"
-                  size="1"
-                  variant="soft"
-                  color="red"
-                  disabled={
-                    sending ||
-                    messagesQ.isPending ||
-                    clearMsgsM.isPending ||
-                    !projectId ||
-                    conversationId.length === 0
-                  }
-                  onClick={() => void clearCurrentConversationMessages()}
-                >
-                  {clearMsgsM.isPending ? "清空中…" : "清空对话"}
-                </Button>
-              </Flex>
-              {messagesQ.isError ? (
-                <Text color="red" size="2" mb="2">
-                  无法加载当前会话消息。
-                </Text>
-              ) : null}
-              <Box
-                style={{
-                  flex: 1,
-                  minHeight: 0,
-                  overflowY: "auto",
-                  WebkitOverflowScrolling: "touch",
-                }}
-              >
-                <Flex direction="column" gap="2" pr="2" pb="2">
-                  {conversationId.length === 0 ? (
-                    <Text color="gray" size="2" highContrast={false}>
-                      正在准备会话…
-                    </Text>
-                  ) : chatLoading ? (
-                    <Flex align="center" gap="2">
-                      <Spinner size="2" />
-                      <Text color="gray" size="2" highContrast={false}>
-                        正在加载历史消息…
-                      </Text>
-                    </Flex>
-                  ) : lines.length === 0 ? (
-                    <Text color="gray" size="2" highContrast={false}>
-                      尚无消息。请确认本机 agents-runner 已启动，并已在「Agent 配置」中填写 router
-                      槽位的模型与网关。
-                    </Text>
-                  ) : (
-                    lines.map((m) => (
-                      <Box
-                        key={m.id}
-                        p="2"
-                        style={{
-                          borderRadius: 8,
-                          background:
-                            m.role === "user" ? "var(--gray-a3)" : "var(--accent-a3)",
-                          alignSelf: m.role === "user" ? "flex-end" : "flex-start",
-                          maxWidth: "92%",
-                        }}
-                      >
-                        <Text size="1" weight="bold" mb="1" color="gray">
-                          {m.role === "user" ? "你" : "入口 Agent"}
-                        </Text>
-                        <Text size="2">{m.text}</Text>
-                      </Box>
-                    ))
-                  )}
+            <section className={`${DIALOGUE_SHELL} flex-1 p-4`}>
+              <div className="grid min-h-0 min-w-0 flex-1 grid-rows-[auto_auto_minmax(12rem,1fr)_auto] gap-3">
+                <Flex align="center" justify="between" gap="3" wrap="wrap" className="min-h-0 shrink-0">
+                  <Heading size="4" mb="0">
+                    会话
+                  </Heading>
+                  <Flex align="center" gap="2" wrap="wrap">
+                    <Button
+                      type="button"
+                      size="1"
+                      variant="soft"
+                      disabled={sending || sidebarBusy || !projectId}
+                      onClick={() => void startNewConversationRound("manual")}
+                    >
+                      新会话
+                    </Button>
+                    <Button
+                      type="button"
+                      size="1"
+                      variant="soft"
+                      color="red"
+                      disabled={
+                        sending ||
+                        messagesQ.isPending ||
+                        clearMsgsM.isPending ||
+                        !projectId ||
+                        conversationId.length === 0
+                      }
+                      onClick={() => void clearCurrentConversationMessages()}
+                    >
+                      {clearMsgsM.isPending ? "清空中…" : "清空对话"}
+                    </Button>
+                  </Flex>
                 </Flex>
-              </Box>
-              <form onSubmit={onSend}>
-                <Flex gap="2" mt="3" align="end">
-                  <Box style={{ flex: 1 }}>
-                    <TextField.Root
-                      placeholder="输入消息后回车发送…"
-                      value={input}
-                      onChange={(evt) => setInput(evt.target.value)}
-                      disabled={sending || messagesQ.isPending || conversationId.length === 0}
-                    />
-                  </Box>
-                  <Button
-                    type="submit"
-                    disabled={sending || messagesQ.isPending || conversationId.length === 0}
-                  >
-                    {sending ? "生成中…" : "发送"}
-                  </Button>
-                </Flex>
-              </form>
-            </Card>
 
-            <Card
-              size="2"
-              style={{
-                flex: "1 1 50%",
-                display: "flex",
-                flexDirection: "column",
-                minHeight: 0,
-              }}
-            >
-              <Heading size="4" mb="3">
-                日志
-              </Heading>
-              <Box
-                style={{
-                  flex: 1,
-                  minHeight: 0,
-                  overflowY: "auto",
-                  WebkitOverflowScrolling: "touch",
-                }}
-              >
-                <Box
-                  pr="2"
-                  pb="2"
-                  style={{
-                    fontFamily: "var(--mono-font-family, ui-monospace)",
-                    fontSize: "var(--font-size-2)",
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-word",
-                  }}
-                >
-                  {logLines.length === 0 ? (
-                    <Text color="gray" size="2" highContrast={false}>
-                      与本页 Runner 请求相关的一行级日志。
+                <Box className="min-h-0 shrink-0">
+                  <Flex justify="between" align="center" gap="2" wrap="wrap" mb="1">
+                    <Text size="1" color="gray" highContrast={false}>
+                      本轮 Token（估算）
                     </Text>
+                    <Text size="1" color="gray" highContrast={false}>
+                      剩余 <strong>{budgetLabel}</strong>
+                      {tokenPct !== null ? (
+                        <span className="ml-1 opacity-90">· {Math.round(tokenPct)}%</span>
+                      ) : null}
+                    </Text>
+                  </Flex>
+                  {tokenPct !== null ? (
+                    <Box
+                      role="progressbar"
+                      aria-valuenow={budgetRemaining ?? undefined}
+                      aria-valuemin={0}
+                      aria-valuemax={budgetTotal ?? undefined}
+                      className="h-1 overflow-hidden rounded-full bg-[var(--gray-a4)]"
+                    >
+                      <Box
+                        className="h-full transition-[width] duration-300 ease-in-out"
+                        style={{
+                          width: `${tokenPct}%`,
+                          background: tokenBarColorVar(tokenPct),
+                        }}
+                      />
+                    </Box>
                   ) : (
-                    logLines.join("\n")
+                    <Text size="1" color="gray" highContrast={false}>
+                      发送消息后随 Runner SSE 更新。
+                    </Text>
                   )}
+                  {messagesQ.isError ? (
+                    <Text color="red" size="2" mt="2">
+                      无法加载当前会话消息。
+                    </Text>
+                  ) : null}
                 </Box>
-              </Box>
-            </Card>
+
+                <Box className="min-h-0 overflow-x-hidden overflow-y-scroll overscroll-y-contain [-webkit-overflow-scrolling:touch] touch-pan-y">
+                  <Flex direction="column" gap="3" className="mx-auto w-full max-w-2xl px-1 py-2">
+                    {conversationId.length === 0 ? (
+                      <Flex align="center" justify="center" py="8">
+                        <Text color="gray" size="2" highContrast={false}>
+                          正在准备会话…
+                        </Text>
+                      </Flex>
+                    ) : chatLoading ? (
+                      <Flex align="center" justify="center" gap="2" py="8">
+                        <Spinner size="2" />
+                        <Text color="gray" size="2" highContrast={false}>
+                          正在加载历史消息…
+                        </Text>
+                      </Flex>
+                    ) : lines.length === 0 ? (
+                      <Flex align="center" justify="center" py="8" px="2">
+                        <Text color="gray" size="2" highContrast={false} className="text-center">
+                          尚无消息。请确认本机 agents-runner 已启动，并已在「Agent 配置」中填写 router
+                          槽位的模型与网关。
+                        </Text>
+                      </Flex>
+                    ) : (
+                      lines.map((m) => (
+                        <Box
+                          key={m.id}
+                          px="3"
+                          py="2"
+                          className={[
+                            "max-w-[min(92%,36rem)] rounded-2xl text-[15px] leading-relaxed",
+                            m.role === "user"
+                              ? "ml-auto bg-[var(--gray-a4)] text-[var(--gray-12)]"
+                              : "mr-auto border border-[var(--gray-a6)] bg-[var(--gray-a3)] text-[var(--gray-12)]",
+                          ].join(" ")}
+                        >
+                          <Text size="1" weight="bold" mb="1" color="gray">
+                            {m.role === "user" ? "你" : "入口 Agent"}
+                          </Text>
+                          <Text size="2" className="whitespace-pre-wrap break-words">
+                            {m.text}
+                          </Text>
+                        </Box>
+                      ))
+                    )}
+                  </Flex>
+                </Box>
+
+                <form onSubmit={onSend} className="min-h-0 shrink-0">
+                  <Box className="rounded-2xl border border-[var(--gray-a7)] bg-[var(--gray-a3)] p-3 shadow-[0_12px_40px_-16px_rgb(0_0_0/0.45)]">
+                    <Flex gap="3" align="end">
+                      <Box className="min-w-0 flex-1 [&_.rt-TextFieldInput]:min-h-[44px] [&_.rt-TextFieldInput]:rounded-xl [&_.rt-TextFieldInput]:border-[var(--gray-a7)] [&_.rt-TextFieldInput]:bg-[var(--gray-a2)]">
+                        <TextField.Root
+                          placeholder="发消息或输入指令…"
+                          value={input}
+                          onChange={(evt) => setInput(evt.target.value)}
+                          disabled={sending || messagesQ.isPending || conversationId.length === 0}
+                        />
+                      </Box>
+                      <Button
+                        type="submit"
+                        size="3"
+                        disabled={sending || messagesQ.isPending || conversationId.length === 0}
+                        className="shrink-0 rounded-xl px-5"
+                      >
+                        {sending ? "生成中…" : "发送"}
+                      </Button>
+                    </Flex>
+                  </Box>
+                </form>
+              </div>
+            </section>
+
+            <section className={`${DIALOGUE_SHELL} flex-1 p-4`}>
+              <div className="grid min-h-0 min-w-0 flex-1 grid-rows-[auto_minmax(12rem,1fr)] gap-3">
+                <Heading size="4" mb="0" className="min-h-0 shrink-0">
+                  日志
+                </Heading>
+                <Box className="min-h-0 overflow-x-hidden overflow-y-scroll overscroll-y-contain [-webkit-overflow-scrolling:touch] touch-pan-y">
+                  <Box
+                    pr="2"
+                    pb="2"
+                    className="break-words whitespace-pre-wrap text-[length:var(--font-size-2)] [font-family:var(--mono-font-family,ui-monospace)]"
+                  >
+                    {logLines.length === 0 ? (
+                      <Text color="gray" size="2" highContrast={false}>
+                        与本页 Runner 请求相关的一行级日志。
+                      </Text>
+                    ) : (
+                      logLines.join("\n")
+                    )}
+                  </Box>
+                </Box>
+              </div>
+            </section>
           </Flex>
         </Flex>
       </Flex>
-    </Flex>
+    </div>
   );
 };

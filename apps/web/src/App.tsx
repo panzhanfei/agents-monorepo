@@ -28,20 +28,13 @@ export const App = () => {
   const { accessToken, clearSession } = useAuth();
 
   return (
-    <Box style={{ minHeight: "100vh", display: "grid", gridTemplateRows: "auto 1fr" }}>
+    <Box className="grid h-[100dvh] min-h-0 grid-rows-[auto_minmax(0,1fr)]">
       <Box
         px="4"
         py="3"
-        style={{
-          position: "sticky",
-          top: 0,
-          zIndex: 10,
-          borderBottom: "1px solid var(--gray-a6)",
-          background: "var(--color-panel-translucent)",
-          backdropFilter: "blur(12px)",
-        }}
+        className="sticky top-0 z-10 border-b border-[var(--gray-a6)] bg-[var(--color-panel-translucent)] backdrop-blur-md"
       >
-        <Flex align="center" gap="4" mx="auto" style={{ maxWidth: 1080 }}>
+        <Flex align="center" gap="4" mx="auto" className="max-w-[1080px]">
           <Heading as="h1" size="5" weight="bold" mb="0">
             Agents Console
           </Heading>
@@ -75,32 +68,34 @@ export const App = () => {
         </Flex>
       </Box>
 
-      <Box asChild>
-        <main className="mx-auto w-full max-w-270 px-4 py-6">
+      <main className="mx-auto box-border flex min-h-0 min-w-0 w-full max-w-270 flex-1 flex-col overflow-x-hidden overflow-y-auto px-4 py-6">
+        <Box className="flex min-h-0 min-w-0 flex-1 flex-col">
           <Suspense fallback={<RouteFallback />}>
-            <Routes>
-              <Route path="/login" element={<LoginPageLazy />} />
-              <Route path="/register" element={<RegisterPageLazy />} />
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+              <Routes>
+                <Route path="/login" element={<LoginPageLazy />} />
+                <Route path="/register" element={<RegisterPageLazy />} />
 
-              <Route element={<Protected />}>
-                <Route path="/projects" element={<ProjectsPageLazy />} />
-                <Route path="/projects/:projectId" element={<ProjectWorkspaceLayout />}>
-                  <Route path="chat" element={<ProjectDialoguePageLazy />} />
-                  <Route path="config" element={<ProjectConfigPageLazy />} />
-                  <Route path="tasks" element={<ProjectTasksPageLazy />} />
+                <Route element={<Protected />}>
+                  <Route path="/projects" element={<ProjectsPageLazy />} />
+                  <Route path="/projects/:projectId" element={<ProjectWorkspaceLayout />}>
+                    <Route path="chat" element={<ProjectDialoguePageLazy />} />
+                    <Route path="config" element={<ProjectConfigPageLazy />} />
+                    <Route path="tasks" element={<ProjectTasksPageLazy />} />
+                  </Route>
+                  <Route path="/runners" element={<RunnerRegisterPageLazy />} />
+                  <Route path="/settings/local-init" element={<LocalInitPageLazy />} />
+                  <Route path="/settings/agent-models" element={<AgentModelsPageLazy />} />
+                  <Route path="/settings" element={<SettingsPageLazy />} />
                 </Route>
-                <Route path="/runners" element={<RunnerRegisterPageLazy />} />
-                <Route path="/settings/local-init" element={<LocalInitPageLazy />} />
-                <Route path="/settings/agent-models" element={<AgentModelsPageLazy />} />
-                <Route path="/settings" element={<SettingsPageLazy />} />
-              </Route>
 
-              <Route path="/" element={<LoginPageLazy />} />
-              <Route path="*" element={<LoginPageLazy />} />
-            </Routes>
+                <Route path="/" element={<LoginPageLazy />} />
+                <Route path="*" element={<LoginPageLazy />} />
+              </Routes>
+            </div>
           </Suspense>
-        </main>
-      </Box>
+        </Box>
+      </main>
     </Box>
   );
 };

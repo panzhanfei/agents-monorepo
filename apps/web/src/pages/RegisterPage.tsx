@@ -4,7 +4,14 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/auth";
 import { getMutationErrorMessage, useRegisterMutation } from "@/hooks";
 import { getPostAuthRedirectPath } from "@/utils/postAuthRedirect";
-import { AuthScreen } from "./AuthScreen";
+import {
+  AUTH_ALT_LINK_BUTTON_CLASS,
+  AUTH_CALLOUT_ERROR_CLASS,
+  AUTH_FIELD_CLASS,
+  AUTH_LABEL_CLASS,
+  AUTH_SUBMIT_BUTTON_CLASS,
+  AuthScreen,
+} from "./AuthScreen";
 
 export const RegisterPage = () => {
   const navigate = useNavigate();
@@ -35,15 +42,15 @@ export const RegisterPage = () => {
   return (
     <AuthScreen title="注册" subtitle="密码至少 8 位，即刻开始协作">
       {error ? (
-        <Callout.Root color="red" role="alert" className="auth-screen__error">
+        <Callout.Root color="red" role="alert" className={AUTH_CALLOUT_ERROR_CLASS}>
           <Callout.Text>{error}</Callout.Text>
         </Callout.Root>
       ) : null}
 
       <form onSubmit={onSubmit}>
         <Flex direction="column" gap="4">
-          <div className="auth-field">
-            <label className="auth-field-label" htmlFor="register-email">
+          <div className={AUTH_FIELD_CLASS}>
+            <label className={AUTH_LABEL_CLASS} htmlFor="register-email">
               邮箱
             </label>
             <TextField.Root
@@ -57,8 +64,8 @@ export const RegisterPage = () => {
               placeholder="you@company.com"
             />
           </div>
-          <div className="auth-field">
-            <label className="auth-field-label" htmlFor="register-password">
+          <div className={AUTH_FIELD_CLASS}>
+            <label className={AUTH_LABEL_CLASS} htmlFor="register-password">
               密码
             </label>
             <TextField.Root
@@ -73,10 +80,10 @@ export const RegisterPage = () => {
             />
           </div>
           <Flex direction="column" gap="2" mt="2">
-            <Button type="submit" size="3" disabled={register.isPending} className="auth-submit">
+            <Button type="submit" size="3" disabled={register.isPending} className={AUTH_SUBMIT_BUTTON_CLASS}>
               {register.isPending ? "创建中…" : "创建并登录"}
             </Button>
-            <Button variant="ghost" color="gray" size="3" asChild className="auth-alt-link">
+            <Button variant="ghost" color="gray" size="3" asChild className={AUTH_ALT_LINK_BUTTON_CLASS}>
               <Link to="/login">已有账号？去登录</Link>
             </Button>
           </Flex>
