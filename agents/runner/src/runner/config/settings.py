@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     runner_setup_allow_origins: str = "http://127.0.0.1:5001,http://localhost:5001"
     #: 无凭据首次启动时是否尝试打开浏览器
     runner_setup_open_browser: bool = True
+    #: 入口对话页「本轮」Token 额度（估算用，约按 4 字符 ≈ 1 token）；耗尽后前端可自动新开会话
+    entry_chat_round_token_budget: int = 16_384
+    #: 估算时计入 Router 一次决策的预留开销（token）
+    entry_chat_router_overhead_tokens: int = 512
 
 
 @lru_cache

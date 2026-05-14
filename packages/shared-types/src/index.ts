@@ -36,8 +36,15 @@ export type {
 export type {
   IAgentChatAppendBody,
   IAgentChatAppendResponse,
+  IAgentChatClearResponse,
+  IAgentChatConversationRow,
+  IAgentChatConversationsResponse,
+  IAgentChatCreateConversationBody,
+  IAgentChatCreateConversationResponse,
   IAgentChatMessageRow,
   IAgentChatMessagesResponse,
+  IAgentChatPatchConversationBody,
+  IAgentChatPatchConversationResponse,
   IAgentChatRole,
 } from "./projectChat";
 export type { IRunnerAgentSlotSecret, IRunnerAgentSlotsResponse } from "./runnerAgentSlots";

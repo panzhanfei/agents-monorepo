@@ -30,16 +30,23 @@ const parseSseBlock = (block: string): { event: string; data: string } | null =>
   return { event: evt, data };
 };
 
+export type IEntryChatBudgetPayload = {
+  remaining: number;
+  total: number;
+};
+
 export type IStreamEntryAgentParams = {
   messages: IEntryChatPayloadLine[];
   projectId?: string;
   onToken: (text: string) => void;
   onLog?: (line: string) => void;
+  onBudget?: (payload: IEntryChatBudgetPayload) => void;
+  onBudgetExhausted?: () => void;
 };
 
 /** 调用本机 Runner `POST /v1/agent/entry/chat`，解析 SSE（`token` | `done` | `error`）。 */
 export const streamEntryAgentChat = async (params: IStreamEntryAgentParams): Promise<void> => {
-  const { messages, projectId, onToken, onLog } = params;
+  const { messages, projectId, onToken, onLog, onBudget, onBudgetExhausted } = params;
   const base = getRunnerBase();
   const url = `${base}/v1/agent/entry/chat`;
   const log = (s: string): void => {
@@ -72,6 +79,39 @@ export const streamEntryAgentChat = async (params: IStreamEntryAgentParams): Pro
   const handleBlock = (block: string): void => {
     const parsed = parseSseBlock(block);
     if (!parsed) return;
+    if (parsed.event === "route") {
+      try {
+        const json = JSON.parse(parsed.data) as {
+          nextSlot?: unknown;
+          reason?: unknown;
+          configSlot?: unknown;
+        };
+        const ns = typeof json.nextSlot === "string" ? json.nextSlot : "?";
+        const cs = typeof json.configSlot === "string" ? json.configSlot : "";
+        const r = typeof json.reason === "string" ? json.reason : "";
+        log(
+          `[route] ${ns}${cs.length > 0 ? ` (凭证槽 ${cs})` : ""}${r.length > 0 ? ` — ${r}` : ""}`,
+        );
+      } catch {
+        log("[route] (parse error)");
+      }
+      return;
+    }
+    if (parsed.event === "budget") {
+      try {
+        const json = JSON.parse(parsed.data) as { remaining?: unknown; total?: unknown };
+        const remaining = typeof json.remaining === "number" ? json.remaining : 0;
+        const total = typeof json.total === "number" ? json.total : 0;
+        onBudget?.({ remaining, total });
+      } catch {
+        log("[stream] bad budget json");
+      }
+      return;
+    }
+    if (parsed.event === "budget_exhausted") {
+      onBudgetExhausted?.();
+      return;
+    }
     if (parsed.event === "token") {
       let t = "";
       try {
@@ -96,6 +136,20 @@ export const streamEntryAgentChat = async (params: IStreamEntryAgentParams): Pro
     }
     if (parsed.event === "done") {
       log("[stream] done");
+      try {
+        const json = JSON.parse(parsed.data || "{}") as {
+          budgetRemaining?: unknown;
+          budgetTotal?: unknown;
+        };
+        if (
+          typeof json.budgetRemaining === "number" &&
+          typeof json.budgetTotal === "number"
+        ) {
+          onBudget?.({ remaining: json.budgetRemaining, total: json.budgetTotal });
+        }
+      } catch {
+        /* ignore non-json done payloads */
+      }
     }
   };
 

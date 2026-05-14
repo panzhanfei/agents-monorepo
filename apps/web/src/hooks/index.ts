@@ -25,4 +25,15 @@ export {
   useRunnersListQuery,
   type IRunnerHeartbeatVars,
 } from "./runners";
-export { useAppendProjectChatMessageMutation, useProjectChatQuery, projectChatQueryKey } from "./projectChat";
+export {
+  invalidateProjectChatQueries,
+  projectChatConversationsQueryKey,
+  projectChatMessagesQueryKey,
+  useAppendProjectChatMessageMutation,
+  useClearConversationMessagesMutation,
+  useCreateProjectChatConversationMutation,
+  useDeleteProjectChatConversationMutation,
+  usePatchProjectChatConversationMutation,
+  useProjectChatConversationsQuery,
+  useProjectChatMessagesQuery,
+} from "./projectChat";
