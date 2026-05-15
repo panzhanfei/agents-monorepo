@@ -6,46 +6,73 @@ alwaysApply: false
 
 # apps/api 结构与分层
 
-本服务为 **Express** 应用：入口 **`src/index.ts`** 调 **`src/server.ts`** 的 `createApp` / `startServer`；队列消费见 **`src/worker.ts`**。安全头在 **`server.ts`** 使用 **helmet**，CORS 与 JSON 限额在同文件配置。
+本服务为 **Express** 应用：**`src/index.ts`** 内定义 **`createApp`**、**`gracefulShutdown`**，并启动 HTTP **`listen`** 与进程信号处理；**不再**使用单独的 `server.ts`。安全头使用 **helmet**，CORS 与 JSON 限额在同文件配置。
 
-## 请求链路（当前仓库形态）
+**BullMQ Worker**：入口为 **`src/worker/index.ts`**，与队列任务实现 **`src/worker/jobs/`**（如 `processAgentTask`）同目录树，便于后台消费逻辑聚合。**`src/queue/`** 仍为队列封装（如 `agentQueue`），由业务与 worker 引用。
 
-1. **`src/routes/*.ts`**：定义 `Router`、HTTP 方法、路径；**入参校验（如 zod）**、鉴权中间件、`HttpError` 处理与对 **Prisma / Redis / 队列** 的调用**可直接在本文件或抽到同目录 helper**；当前**无**独立 `controllers/`、`services/` 目录。
-2. **`src/middleware/`**：Express 中间件——如 `requireUser`、`requireRunner`、`errorHandler`、`httpLog`、`trace`；在路由或 `createApp` 中组合。
-3. **`src/lib/`**：可复用基础设施：**Prisma 客户端**、**Redis**、**JWT**、**密码哈希**、**HttpError**、Runner 在线/凭证等；**不写**具体某条 HTTP 路由的拼装，业务编排放在 `routes`（或后续若引入 `services/` 再下沉）。
+## 按模块划分子目录（controllers / models / services / routes / views）
 
-**只读聚合**（多表读、DTO 拼装）：在**单一路由处理函数**或后续抽成的函数内完成；优先 **一次/有限次查询** 与 **无 N+1 循环**（见数据访问规则）。**多表写入**应用 **Prisma `$transaction`** 在同一逻辑单元内完成。
+同一业务模块在 **controller / model / service / route / view** 五层下的路径应对齐（示例）：
 
-后台任务与队列：**`src/jobs/`**（如 `processAgentTask`）、**`src/queue/`**（如 `agentQueue`）；由 **`worker.ts`** 消费，避免在 HTTP 进程里跑长耗时循环。
+| 模块 | `controllers/` | `models/` | `services/` | `routes/` | `views/` |
+|------|----------------|-----------|-------------|-----------|----------|
+| 认证 | `controllers/auth/` | `models/auth/` | `services/auth/` | `routes/auth/` | （可无） |
+| 项目 | `controllers/project/` | `models/project/` | `services/project/` | `routes/project/` | `views/project/` |
+| 项目内对话 | `controllers/project-chat/` | `models/project-chat/` | `services/project-chat/` | `routes/project-chat/` | `views/project-chat/` |
+| … | … | … | … | … | … |
+
+各模块目录以 **`index.ts`** 为入口聚合导出；**`runner-v1`** 的视图可含多个文件并由 **`views/runner-v1/index.ts`** 再导出。
+
+## `lib/` 子目录（按域拆分 + 根聚合）
+
+**`lib/`** 内按 **`common` / `auth` / `agent` / `runner`** 分子目录（各含 **`index.ts`**），**`lib/index.ts`** 统一 **`export *`**，业务侧仍可只写 **`import { … } from "@/lib"`**：
+
+| 子目录 | 内容示例 |
+|--------|-----------|
+| **`lib/common/`** | `prisma`、`redis`、`httpError`、`requestScope` |
+| **`lib/auth/`** | `jwt`、`password`、`refreshTokenSession`、`authUserPayload` |
+| **`lib/agent/`** | `agentInference`、`agentModels`、`agentSlotMerge`、`inferenceProbe` |
+| **`lib/runner/`** | `runnerCredentials`、`runnerOnline` |
+
+新增 **`lib/<子目录>`** 时，同步 **`scripts/fix-barrel-imports.mjs`** 内 **`nestedIndexLeaves.lib`**。
+
+## 请求链路（MVC + Services）
+
+1. **`src/routes/<模块>/`**：仅 **`Router`**、路径与中间件顺序，绑定 **controller**。
+2. **`src/controllers/<模块>/`**：校验、读写 `req`/`res`；只调 **`services`**。
+3. **`src/services/<模块>/`**：用例编排（**model**、`lib`、`config`、`queue`、**`HttpError`**）。
+4. **`src/models/<模块>/`**：Prisma 与事务数据层。
+5. **`src/views/<模块>/`**：响应形状与 DTO。
+6. **`src/middleware/`**、**`src/lib/`**：中间件与基础设施。
+
+**只读聚合**：在 **service + model**（必要时 + view）中完成；遵守 N+1 与事务约定。
 
 ## 目录职责（与当前仓库一致）
 
 | 目录 | 职责 |
 |------|------|
-| **`src/config/`** | 环境与服务配置（如 `env.ts` 集中读 `process.env` 并校验）。 |
-| **`src/lib/`** | DB/缓存客户端与领域无关工具（Prisma、Redis、JWT、httpError 等）。 |
-| **`src/middleware/`** | Express 中间件（鉴权、日志、错误、trace）。 |
-| **`src/routes/`** | 各资源路由模块：`auth`、`projects`、`tasks`、`runners`、`runnerV1`、`health`、`ready`、`dev` 等。 |
-| **`src/jobs/`** | 队列/异步任务处理逻辑。 |
-| **`src/queue/`** | BullMQ 等队列定义与封装。 |
-| **`src/types/`** | 类型补充（如 `express.d.ts` 扩展）。 |
-| **`src/server.ts`** | 组装中间件、挂载全部路由、`errorHandler`。 |
-| **`src/index.ts`** | HTTP 进程入口。 |
-| **`src/worker.ts`** | Worker 进程入口。 |
+| **`src/config/`** | 环境与服务配置。 |
+| **`src/controllers/`** | 按子目录分模块的 HTTP 控制器。 |
+| **`src/services/`** | 按子目录分模块的用例层。 |
+| **`src/models/`** | 按子目录分模块的数据访问层。 |
+| **`src/views/`** | 按子目录分模块的响应形状。 |
+| **`src/lib/`** | **`common` / `auth` / `agent` / `runner` 子目录** + 根 **`index.ts`** 聚合导出。 |
+| **`src/middleware/`** | Express 中间件。 |
+| **`src/routes/`** | 按子目录分模块的路由；**路由根 `routes/index.ts`** 聚合导出。 |
+| **`src/queue/`** | BullMQ 等队列封装。 |
+| **`src/worker/`** | Worker 进程入口 **`index.ts`**；**`worker/jobs/`** 为任务处理实现。 |
+| **`src/types/`** | 类型补充。 |
+| **`src/index.ts`** | HTTP：导出 **`createApp` / `gracefulShutdown`**，并启动监听。 |
 | **`prisma/`** | `schema.prisma`、迁移与 seed。 |
 
 ## `import` 说明
 
-- **`apps/api/tsconfig.json`**：`module` 为 **`ESNext`**，`moduleResolution` 为 **`Bundler`**；**路径别名** **`@/*` → `./src/*`**。**`pnpm build`**：`tsc` → **`tsc-alias -p tsconfig.json`** → **`scripts/fix-barrel-imports.mjs`**（**`dist`**：barrel → **`/index.js`**，叶子相对路径 → **`.js`**）。
-- **与前端共享的契约类型**：从 **`@agents/shared-types`** 使用 **`import type { … }`**（仅类型，无运行时依赖）。
-- **相对路径**：源码中 **不写** **`.js`/`.ts`/`.tsx`**；**跨目录**优先 **`@/…`**（barrel 不写 **`/index`**）。外部 npm 包照常包名导入。
-- **跨目录 barrel**：**`config/`、`lib/`、`middleware/`、`routes/`、`queue/`、`jobs/`** 等从 **`@/config`**、**`@/lib`** 等聚合入口引入；若新增同级 barrel 根目录，需同步 **`scripts/fix-barrel-imports.mjs`** 内的 **`barrels`** 集合。
-- **目录内部**（如 `routes/auth.ts`）：**同目录兄弟文件**之间优先 **`./foo`**（无扩展名），不经本目录 `index.ts`。
-- **防循环**：若 barrel 会形成循环，遵循根目录 **`project-conventions.mdc`**「防循环依赖」一条（典型：`import type` 从对方 **`interface.ts`**）。
+- **`pnpm build`**：`tsc` → **`tsc-alias`** → **`scripts/fix-barrel-imports.mjs`**（**`dist`**：`models`、`services`、`routes`、`views`、`controllers`、`lib`、`worker` 等 **barrel**，以及 **`models/auth`、`controllers/task`、`lib/common` 等子路径** → **`…/index.js`**；其余无扩展名相对路径 → **`.js`**）。**新增**模块子目录名时，需同步脚本内 **`nestedIndexLeaves`**。
+- **跨目录**优先 **`@/controllers/<模块>`**、**`@/models/<模块>`**、**`@/services/<模块>`** 等；**不写** **`/index`**。未拆分时也可继续 **`import { … } from "@/lib"`**（走根聚合）。
+- **`@/worker/jobs`**：worker 侧任务入口聚合。
+- 其它约定同根目录 **`project-conventions.mdc`**（路径别名、防循环等）。
 
 ## 新增功能时的习惯
 
-- **新路由**：在 `src/routes/` 新增 `*.ts`（或按需要子目录），在 **`src/server.ts`** 的 `createApp` 里 `app.use(...)` 挂载；敏感操作配好 `requireUser` / `requireRunner` 等。
-- **新配置**：在 `src/config/` 增加模块，并从 `getEnv()` 或统一 config 出口读取；密钥只走环境变量（见 `env-secrets`）。
-- **与 `apps/web` 契约**：REST 路径、状态码、错误体形状与前端 **`apps/web/src/api/`**（聚合入口 **`src/api/index.ts`**）保持一致；**JSON 负载与响应的领域类型**以 **`@agents/shared-types`** 为单一来源，路由侧可用 **`import type`** 对齐返回值与校验逻辑。
-- 可抽离到 monorepo 的多应用共用能力，遵循根目录 **`packages/`** 约定。
+- 新能力：在对应 **`controllers/<模块>/`**、**`models/<模块>/`**、**`services/<模块>/`**、**`views/<模块>/`**（按需）各增/改 **`index.ts`**；**`routes/<模块>/`** 挂 Router；在 **`src/index.ts`** 的 **`createApp`** 中 **`app.use(...)`** 挂载（与现有前缀一致）；敏感操作配 **`requireUser`** / **`requireRunner`**。
+- Worker 任务逻辑放在 **`src/worker/jobs/`**，由 **`src/worker/index.ts`** 订阅队列并调用。

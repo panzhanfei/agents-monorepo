@@ -1,8 +1,8 @@
 export { authRouter } from "./auth";
-export { projectsRouter } from "./projects";
-export { tasksRouter } from "./tasks";
-export { runnersRouter } from "./runners";
-export { runnerV1Router } from "./runnerV1";
+export { projectsRouter } from "./project";
+export { tasksRouter } from "./task";
+export { runnersRouter } from "./runner";
+export { runnerV1Router } from "./runner-v1";
 export { healthRouter } from "./health";
 export { readyRouter } from "./ready";
 export { devRouter } from "./dev";

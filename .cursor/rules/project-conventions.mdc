@@ -59,7 +59,7 @@ export function buildUser(id: string) { ... }
 
 ### 必须维护 `index.ts` 的典型目录
 
-- **`apps/api/src`**：`config/`、`lib/`、`middleware/`、`routes/`、`queue/`、`jobs/`（以及后续新增的同级「多文件领域目录」）。
+- **`apps/api/src`**：`config/`、`controllers/`（**按模块子目录**）、`services/`（**按模块子目录**）、`models/`（**按模块子目录**）、`views/`（**按模块子目录**）、`lib/`（**`common` / `auth` / `agent` / `runner` 子目录** + 根 **`index.ts`**）、`middleware/`、`routes/`（**按模块子目录**）、`queue/`、`worker/`（含 `worker/jobs/`）（以及后续新增的同级「多文件领域目录」）。
 - **`apps/web/src`**：`api/`、`auth/`、`pages/`、`utils/`、`routes/`（以及后续 `components/`、`hooks/` 等多文件目录）。
 
 ### 导入约定
@@ -76,7 +76,7 @@ export function buildUser(id: string) { ... }
 ### 其它
 
 - **配置**：在 **`config/index.ts`**（或包约定入口）汇总再导出（实现仍可落在 `env.ts` 等文件中）。
-- **路由（后端）**：新路由文件写在 **`routes/`**，并在 **`src/server.ts`** 的 `createApp` 中挂载；**路由聚合导出**放在 **`routes/index.ts`**。
+- **路由（后端）**：新路由写在 **`routes/<模块>/`**（或新模块子目录），并在 **`src/index.ts`** 的 `createApp` 中挂载；**路由聚合导出**仍放在 **`routes/index.ts`**。
 - **`packages/*`**：遵循 **`package.json` `exports`** 与 **`src/index.ts`**（若存在），原则与本条一致。**`@agents/shared-types`** 源码不写 **`.js`** 后缀；**`pnpm build`** 含 **`scripts/fix-dist-relative-imports.mjs`**，保证 **`dist/`** 内相对 **`import`** 带 **`.js`**（当前 **`index`** 多为 **`export {}`**，脚本为未来增减运行时导出预留）。
 - **文件名并列**：若「**单文件**」与「**同名目录**」并列（如 `proxy.ts` 与 `proxy/`），解析器可能优先解析文件；按需使用子路径或明确 `./proxy/index.js`，避免误指向。
 
