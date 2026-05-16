@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import type { ISetupTokenStore } from "@/domain/setup/ports/setup-token.store";
+import type { ISetupTokenStore } from "@/domain";
 
 export const createInMemorySetupTokenStore = (): ISetupTokenStore => {
   let pending: string | null = null;

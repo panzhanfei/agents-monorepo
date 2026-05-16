@@ -1,7 +1,7 @@
 import type express from "express";
 import { z } from "zod";
-import { ingestDeviceCredentials } from "@/application/setup/ingest-credentials.use-case";
-import type { IAppRuntime } from "@/interfaces/http/runtime";
+import { ingestDeviceCredentials } from "@/application";
+import type { IAppRuntime } from "../runtime";
 
 const setupIngestBody = z.object({
   deviceKey: z.string().min(1),

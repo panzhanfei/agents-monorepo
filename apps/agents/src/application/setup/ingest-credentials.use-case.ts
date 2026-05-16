@@ -1,9 +1,11 @@
 import { timingSafeEqual } from "node:crypto";
-import type { IAgentsConfig } from "@/infrastructure/config/agents-settings";
-import { mergeConfigAfterIngest } from "@/infrastructure/config/agents-settings";
-import { writeDeviceCredentials } from "@/infrastructure/persistence/device-env.writer";
-import { upsertLocalDotenv } from "@/infrastructure/persistence/local-dotenv.sync";
-import type { IStatefulAgentSlotsGateway } from "@/infrastructure/http/node-agent-slots.gateway";
+import {
+  mergeConfigAfterIngest,
+  upsertLocalDotenv,
+  writeDeviceCredentials,
+  type IAgentsConfig,
+  type IStatefulAgentSlotsGateway,
+} from "@/infrastructure";
 
 export type IIngestDeviceCredentialsCommand = {
   deviceKey: string;

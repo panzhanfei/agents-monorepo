@@ -1,10 +1,13 @@
 import OpenAI from "openai";
 import type { IRunnerAgentSlotSecret } from "@agents/shared-types";
-import { DOWNSTREAM_AGENT_SYSTEM, ROUTER_ROUTING_SYSTEM } from "@/domain/entry-chat/agent-prompts";
-import { EntryChatConfigError } from "@/domain/entry-chat/entry-chat.errors";
-import { parseRoutePayload } from "@/domain/entry-chat/route-decision.service";
-import type { IChatLine } from "@/domain/entry-chat/chat-message.vo";
-import type { IEntryChatLlmGateway } from "@/domain/entry-chat/ports/llm.gateway";
+import {
+  DOWNSTREAM_AGENT_SYSTEM,
+  ROUTER_ROUTING_SYSTEM,
+  EntryChatConfigError,
+  parseRoutePayload,
+  type IChatLine,
+  type IEntryChatLlmGateway,
+} from "@/domain";
 
 const ensureHttpScheme = (url: string): string => {
   const s = url.trim();

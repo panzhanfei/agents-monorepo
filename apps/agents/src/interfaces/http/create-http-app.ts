@@ -1,8 +1,7 @@
 import cors from "cors";
 import express from "express";
-import type { IAppRuntime } from "@/interfaces/http/runtime";
-import { mountEntryChatRoute } from "@/interfaces/http/routes/entry-chat.route";
-import { mountSetupIngestRoute } from "@/interfaces/http/routes/setup-ingest.route";
+import type { IAppRuntime } from "./runtime";
+import { mountEntryChatRoute, mountSetupIngestRoute } from "./routes";
 
 export const createHttpApplication = (runtime: IAppRuntime): express.Express => {
   const app = express();

@@ -61,6 +61,7 @@ export function buildUser(id: string) { ... }
 
 - **`apps/api/src`**：`config/`、`controllers/`（**按模块子目录**）、`services/`（**按模块子目录**）、`models/`（**按模块子目录**）、`views/`（**按模块子目录**）、`lib/`（**`common` / `auth` / `agent` / `runner` 子目录** + 根 **`index.ts`**）、`middleware/`、`routes/`（**按模块子目录**）、`queue/`、`worker/`（含 `worker/jobs/`）（以及后续新增的同级「多文件领域目录」）。
 - **`apps/web/src`**：`api/`、`auth/`、`pages/`、`utils/`、`routes/`（以及后续 `components/`、`hooks/` 等多文件目录）。
+- **`apps/agents/src`**：`domain/`、`application/`、`infrastructure/`、`interfaces/` 及子目录维护 **`index.ts`**；跨层优先 **`@/domain`**、**`@/application`**、**`@/infrastructure`**、**`@/interfaces`**；**`interfaces/http/routes`** 禁止 **`from "@/interfaces"`**（防 barrel 循环）。细则见 **`.cursor/rules/agents-app-barrels.mdc`**。
 
 ### 导入约定
 

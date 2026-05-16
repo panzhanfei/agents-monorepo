@@ -2,13 +2,14 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadProcessEnv } from "@/infrastructure/config/load-env";
-import { buildAgentsConfig } from "@/infrastructure/config/agents-settings";
-import { createNodeAgentSlotsGateway } from "@/infrastructure/http/node-agent-slots.gateway";
-import { createOpenAiEntryChatLlmGateway } from "@/infrastructure/llm/openai-entry-chat.llm.gateway";
-import { createInMemorySetupTokenStore } from "@/infrastructure/setup/in-memory-setup-token.store";
-import { createHttpApplication } from "@/interfaces/http/create-http-app";
-import type { IAppRuntime } from "@/interfaces/http/runtime";
+import {
+  buildAgentsConfig,
+  createInMemorySetupTokenStore,
+  createNodeAgentSlotsGateway,
+  createOpenAiEntryChatLlmGateway,
+  loadProcessEnv,
+} from "@/infrastructure";
+import { createHttpApplication, type IAppRuntime } from "@/interfaces";
 
 loadProcessEnv();
 

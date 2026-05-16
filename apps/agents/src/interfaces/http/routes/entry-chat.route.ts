@@ -1,9 +1,9 @@
 import type express from "express";
 import { z } from "zod";
-import { streamEntryChatEvents } from "@/application/entry-chat/stream-entry-chat.use-case";
-import { AgentSlotsAccessError } from "@/domain/entry-chat/entry-chat.errors";
-import type { IAppRuntime } from "@/interfaces/http/runtime";
-import { writeEntryChatSseEvent } from "@/interfaces/http/sse/write-entry-chat-sse";
+import { streamEntryChatEvents } from "@/application";
+import { AgentSlotsAccessError } from "@/domain";
+import type { IAppRuntime } from "../runtime";
+import { writeEntryChatSseEvent } from "../sse";
 
 const chatMessageIn = z.object({
   role: z.enum(["user", "assistant", "system"]),

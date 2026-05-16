@@ -1,9 +1,11 @@
-import { EntryChatConfigError } from "@/domain/entry-chat/entry-chat.errors";
-import { configSlotForLogicalRole } from "@/domain/entry-chat/agent-routing.policy";
-import { estimatePromptTokens } from "@/domain/entry-chat/token-budget.vo";
-import type { IChatLine } from "@/domain/entry-chat/chat-message.vo";
-import type { IAgentSlotsGateway } from "@/domain/entry-chat/ports/agent-slots.gateway";
-import type { IEntryChatLlmGateway } from "@/domain/entry-chat/ports/llm.gateway";
+import {
+  configSlotForLogicalRole,
+  EntryChatConfigError,
+  estimatePromptTokens,
+  type IAgentSlotsGateway,
+  type IChatLine,
+  type IEntryChatLlmGateway,
+} from "@/domain";
 
 export type IEntryChatSseEvent =
   | { type: "route"; nextSlot: string; reason: string; configSlot: string }

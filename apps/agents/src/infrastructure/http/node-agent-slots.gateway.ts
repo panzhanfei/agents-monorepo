@@ -1,9 +1,9 @@
 import type { IAgentSlotKey, IRunnerAgentSlotsResponse } from "@agents/shared-types";
-import { AgentSlotsAccessError } from "@/domain/entry-chat/entry-chat.errors";
-import type {
-  IAgentSlotFetchResult,
-  IAgentSlotsGateway,
-} from "@/domain/entry-chat/ports/agent-slots.gateway";
+import {
+  AgentSlotsAccessError,
+  type IAgentSlotFetchResult,
+  type IAgentSlotsGateway,
+} from "@/domain";
 
 export type IStatefulAgentSlotsGateway = IAgentSlotsGateway & {
   withCredentials(baseUrl: string, deviceKey: string, deviceSecret: string): void;

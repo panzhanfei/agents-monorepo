@@ -1,5 +1,5 @@
 import type express from "express";
-import type { IEntryChatSseEvent } from "@/application/entry-chat/stream-entry-chat.use-case";
+import type { IEntryChatSseEvent } from "@/application";
 
 const writeSseLine = (res: express.Response, event: string, data: string): void => {
   res.write(`event: ${event}\ndata: ${data}\n\n`);

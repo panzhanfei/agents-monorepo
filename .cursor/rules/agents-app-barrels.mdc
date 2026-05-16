@@ -1,0 +1,38 @@
+---
+description: apps/agents 分层 barrel（index.ts）与跨层 @/ 导入；interfaces 路由禁止引用 @/interfaces 以防循环
+globs: apps/agents/**/*.ts
+alwaysApply: false
+---
+
+# `apps/agents`：分层目录与聚合导出
+
+本应用源码根为 **`apps/agents/src`**，按 **`domain`** → **`application`** → **`infrastructure`** → **`interfaces`** 四层组织。**每层目录须有 `index.ts`**；其下**多文件的子目录**（如 `domain/entry-chat`、`infrastructure/config`、`interfaces/http/routes`）也须有 **`index.ts`**，用 **`export * from "./模块"`** 逐层向上聚合。
+
+## 跨目录导入（优先单行 barrel）
+
+从**其它层**引用符号时，优先使用别名 **`@/`** 对应的**层入口**，**不写**深层叶子路径（不写 `@/domain/entry-chat/...` 这类），便于统一边界与 diff：
+
+- **`import { … } from "@/domain"`**
+- **`import { … } from "@/application"`**
+- **`import { … } from "@/infrastructure"`**
+- **`import { … } from "@/interfaces"`**
+
+同一 import 语句内可用 **`type Foo`** 混入类型与值导出。
+
+## 目录内部（避免 barrel 自引用）
+
+与同层约定一致：**同一目录或紧邻兄弟文件**优先 **`./foo`、`../runtime`** 等相对路径；**不要**为引用兄弟实现文件再绕一圈本目录的 **`index.ts`**。
+
+## 硬规则：`interfaces/http/routes` 禁止 `from "@/interfaces"`
+
+路由模块会被 **`interfaces/http/index.ts`**（再被 **`interfaces/index.ts`**）导出。若在 **`interfaces/http/routes/*.ts`** 内再 **`import … from "@/interfaces"`**，易形成 **barrel ↔ routes** 的**运行时循环依赖**。
+
+- **应当**：引用同层 **`runtime`**、**`sse`** 时使用 **`../runtime`**、**`../sse`**（或 **`../sse/write-entry-chat-sse`** 等叶子路径）。
+- **应当**：引用 **`application`**、**`domain`** 时使用 **`@/application`**、**@/domain`**。
+- **禁止**：在 **`interfaces/http/routes`** 下使用 **`from "@/interfaces"`**。
+
+根入口 **`apps/agents/src/index.ts`** 等**路由外侧**组装代码可使用 **`from "@/interfaces"`**。
+
+## 新增符号时
+
+在某一层的叶子文件新增**对外**导出时，同步在该目录及其祖先目录的 **`index.ts`** 中 **`export *`**（或显式 `export { … }`），保证 **`@/domain`** 等入口能拿到该符号。
