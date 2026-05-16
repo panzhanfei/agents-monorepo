@@ -11,11 +11,11 @@ const trimRunnerBase = (value: unknown): string | undefined => {
   return trimmed.length > 0 ? trimmed : undefined;
 };
 
-/** 本机 Runner HTTP 根（与 `agents/runner` 监听地址一致）。 */
+/** 本机 Agents HTTP 根（`apps/agents`，默认 :3998；可用 VITE_RUNNER_BASE 覆盖）。 */
 export const getRunnerBase = (): string => {
   const fromEnv = trimRunnerBase(import.meta.env.VITE_RUNNER_BASE);
   if (fromEnv) return fromEnv.replace(/\/$/, "");
-  return "http://127.0.0.1:8765";
+  return "http://127.0.0.1:3998";
 };
 
 const parseSseBlock = (block: string): { event: string; data: string } | null => {
@@ -44,7 +44,7 @@ export type IStreamEntryAgentParams = {
   onBudgetExhausted?: () => void;
 };
 
-/** 调用本机 Runner `POST /v1/agent/entry/chat`，解析 SSE（`token` | `done` | `error`）。 */
+/** 调用本机 Agents `POST /v1/agent/entry/chat`，解析 SSE（`token` | `done` | `error`）。 */
 export const streamEntryAgentChat = async (params: IStreamEntryAgentParams): Promise<void> => {
   const { messages, projectId, onToken, onLog, onBudget, onBudgetExhausted } = params;
   const base = getRunnerBase();
@@ -67,11 +67,11 @@ export const streamEntryAgentChat = async (params: IStreamEntryAgentParams): Pro
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(text.length > 0 ? text.slice(0, 400) : `Runner 响应 ${String(res.status)}`);
+    throw new Error(text.length > 0 ? text.slice(0, 400) : `本机 Agents 响应 ${String(res.status)}`);
   }
 
   const reader = res.body?.getReader();
-  if (!reader) throw new Error("无法读取 Runner 流式响应。");
+  if (!reader) throw new Error("无法读取 Agents 流式响应。");
 
   const decoder = new TextDecoder();
   let buffer = "";

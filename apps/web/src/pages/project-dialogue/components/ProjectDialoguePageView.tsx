@@ -89,7 +89,7 @@ export const ProjectDialoguePageView = ({
           </Text>
           <Text color="gray" size="2" highContrast={false} mt="1">
             消息按<strong>会话</strong>保存在云端（左侧列表切换）。推理走本机
-            Runner；{getRunnerBase()}
+            Agents（apps/agents）；{getRunnerBase()}
             ，可用 VITE_RUNNER_BASE 覆盖。
           </Text>
         </Box>
@@ -438,8 +438,9 @@ export const ProjectDialoguePageView = ({
                         highContrast={false}
                         className="text-center"
                       >
-                        尚无消息。请确认本机 agents-runner 已启动，并已在「Agent
-                        配置」中填写 router 槽位的模型与网关。
+                        尚无消息。请确认本机 apps/agents 已启动（默认
+                        3998），并已在「Agent 配置」中填写 router
+                        槽位的模型与网关。
                       </Text>
                     </Flex>
                   ) : (

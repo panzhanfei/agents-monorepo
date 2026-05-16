@@ -1,0 +1,26 @@
+{
+  "name": "agents",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json && tsc-alias -p tsconfig.json",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@agents/shared-types": "workspace:*",
+    "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
+    "express": "^5.1.0",
+    "openai": "^4.97.0",
+    "zod": "^3.24.4"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.1",
+    "@types/node": "^22.15.17",
+    "tsc-alias": "^1.8.17",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  }
+}

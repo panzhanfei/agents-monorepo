@@ -3,10 +3,10 @@
   "private": true,
   "packageManager": "pnpm@9.15.1",
   "scripts": {
-    "dev": "pnpm dev:api & pnpm dev:web & pnpm dev:runner",
+    "dev": "pnpm dev:api & pnpm dev:web & pnpm dev:agents",
     "dev:api": "pnpm --filter api dev",
     "dev:web": "pnpm --filter web dev",
-    "dev:runner": "uv run --directory agents/runner agents-runner",
+    "dev:agents": "pnpm --filter agents dev",
     "worker:api": "pnpm --filter api worker",
     "db:migrate": "pnpm --filter api db:migrate",
     "db:seed": "pnpm --filter api db:seed",

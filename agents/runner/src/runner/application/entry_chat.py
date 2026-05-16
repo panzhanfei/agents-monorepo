@@ -4,41 +4,51 @@ import json
 import re
 from collections.abc import AsyncIterator
 from typing import Any
+from urllib.parse import urlparse
 
 import litellm
 import structlog
 
 _log = structlog.get_logger(__name__)
 
-# ① 入口 Router 除外，产品线共 11 个细分逻辑角色（②～⑫），与 README 脑图主线对齐。
-# `nextSlot` 使用下列**逻辑键**；凭证仍映射到控制面现有 7 个 agentSlots（测试阶段共用模型配置）。
+# -----------------------------------------------------------------------------
+# 角色映射：产品上的「逻辑键」→ 控制面里实际存的 agent 槽位（若干逻辑角色可共用同一槽位凭证）
+# -----------------------------------------------------------------------------
 LOGICAL_ROLE_TO_CONFIG_SLOT: dict[str, str] = {
-    "analyst": "analyst",  # ②
-    "pm_spec": "analyst",  # ③（测试阶段与 analyst 共用凭证，后续可独立槽位）
-    "architect": "architect",  # ④
-    "contract_split": "architect",  # ⑤（测试阶段与 architect 共用凭证）
-    "coder_backend": "coder",  # ⑥
-    "coder_frontend": "coder",  # ⑦
-    "coder_fullstack": "coder",  # ⑧
-    "coder_bff": "coder",  # ⑨
-    "verify_unit": "verifier",  # ⑩
-    "verify_e2e": "verifier",  # ⑪
-    "ops": "ops",  # ⑫
+    "analyst": "analyst",
+    "pm_spec": "analyst",
+    "architect": "architect",
+    "contract_split": "architect",
+    "coder_backend": "coder",
+    "coder_frontend": "coder",
+    "coder_fullstack": "coder",
+    "coder_bff": "coder",
+    "verify_unit": "verifier",
+    "verify_e2e": "verifier",
+    "ops": "ops",
 }
 
 ROUTABLE_AGENT_SLOTS: frozenset[str] = frozenset(LOGICAL_ROLE_TO_CONFIG_SLOT.keys())
 
-# 旧版路由可能仍返回聚合槽位名，解析时归一到细分逻辑键（便于测试对照）。
+# 旧路由若仍返回「粗粒度」槽位名，这里统一成上面的逻辑键，避免测试与前端对不齐。
 _ROUTE_SLOT_ALIASES: dict[str, str] = {
     "coder": "coder_fullstack",
     "reviewer": "verify_unit",
 }
 
+# 要求模型先把「当前路由结果」写在第一行，方便对照 router 是否选对；正文从空行后开始。
 _FIRST_LINE_NOTE = (
     "【重要·测试核对】回复的第一行必须与下一行**完全一致**（单独一行，一字不改），"
     "用于对照入口路由的 nextSlot 是否选对；从空行之后开始回答用户正文。\n"
 )
 
+
+def _downstream_role_prompt(role_heading: str, duty_body: str) -> str:
+    """拼一条下游角色的 system 文案（首行自检 + 标题 + 职责段）。"""
+    return f"{_FIRST_LINE_NOTE}【当前角色】{role_heading}\n\n职责：{duty_body}"
+
+
+# Router 只产出 JSON，不写用户可见正文；具体槽位说明与产品线文档对齐。
 ROUTER_ROUTING_SYSTEM = """你是入口路由器（Router），不向最终用户写任何可见正文。
 
 只根据当前对话，判断下一步应由哪一个「下游细分逻辑角色」处理（产品共 11 个，对应脑图 ②～⑫，不含入口 ①）。
@@ -61,53 +71,69 @@ nextSlot 只能取以下之一（含序号与职责提示）：
 若用户诉求无法明确归类，优先 analyst；若明显是跑测试/流水线，可指向 verify_* 或 ops。"""
 
 DOWNSTREAM_AGENT_SYSTEM: dict[str, str] = {
-    "analyst": _FIRST_LINE_NOTE
-    + "【当前角色】② analyst — 需求 Analyst\n\n"
-    + "职责：把用户口语澄清为目标、范围、验收标准与非目标；可追问 1～2 个关键问题。"
-    + "不执行命令、不修改仓库、不冒充已跑调研。",
-    "pm_spec": _FIRST_LINE_NOTE
-    + "【当前角色】③ pm_spec — PM 规格与拆解\n\n"
-    + "职责：将需求拆成可执行的 issue/任务粒度，说明优先级、依赖与里程碑建议；"
-    + "不直接大段写代码。不执行命令、不修改仓库。",
-    "architect": _FIRST_LINE_NOTE
-    + "【当前角色】④ architect — 架构 Architect\n\n"
-    + "职责：给出模块边界、关键技术与主要风险；保持简洁。不冒充已画定稿架构图文件。",
-    "contract_split": _FIRST_LINE_NOTE
-    + "【当前角色】⑤ contract_split — 契约与拆分\n\n"
-    + "职责：划定前后端/BFF 边界，产出/对齐接口契约要点与可并行任务切分；不写长业务代码。",
-    "coder_backend": _FIRST_LINE_NOTE
-    + "【当前角色】⑥ coder_backend — Coding·后端\n\n"
-    + "职责：以后端视角给出实现步骤、接口与数据层注意点；代码仅短示例。不冒充已在用户环境执行命令。",
-    "coder_frontend": _FIRST_LINE_NOTE
-    + "【当前角色】⑦ coder_frontend — Coding·前端\n\n"
-    + "职责：以前端视角给出页面/状态/接口消费方式；代码仅短示例。不执行用户侧命令。",
-    "coder_fullstack": _FIRST_LINE_NOTE
-    + "【当前角色】⑧ coder_fullstack — Coding·全栈\n\n"
-    + "职责：跨前后端改动时给出串联方案与接口配合点；代码仅短示例。",
-    "coder_bff": _FIRST_LINE_NOTE
-    + "【当前角色】⑨ coder_bff — Coding·BFF\n\n"
-    + "职责：从 BFF/聚合层视角说明路由、鉴权与下游调用边界；代码仅短示例。",
-    "verify_unit": _FIRST_LINE_NOTE
-    + "【当前角色】⑩ verify_unit — Verify·单元测试\n\n"
-    + "职责：给出单测策略、关键用例与断言要点；不冒充已在用户仓库跑通测试。",
-    "verify_e2e": _FIRST_LINE_NOTE
-    + "【当前角色】⑪ verify_e2e — Verify·联调/E2E\n\n"
-    + "职责：给出联调顺序、e2e 场景与数据准备要点；不冒充已跑通流水线。",
-    "ops": _FIRST_LINE_NOTE
-    + "【当前角色】⑫ ops — Ops·打包运维\n\n"
-    + "职责：构建、发布、配置与健康巡检类建议；不执行用户侧真实命令。",
+    "analyst": _downstream_role_prompt(
+        "② analyst — 需求 Analyst",
+        "把用户口语澄清为目标、范围、验收标准与非目标；可追问 1～2 个关键问题。"
+        "不执行命令、不修改仓库、不冒充已跑调研。",
+    ),
+    "pm_spec": _downstream_role_prompt(
+        "③ pm_spec — PM 规格与拆解",
+        "将需求拆成可执行的 issue/任务粒度，说明优先级、依赖与里程碑建议；"
+        "不直接大段写代码。不执行命令、不修改仓库。",
+    ),
+    "architect": _downstream_role_prompt(
+        "④ architect — 架构 Architect",
+        "给出模块边界、关键技术与主要风险；保持简洁。不冒充已画定稿架构图文件。",
+    ),
+    "contract_split": _downstream_role_prompt(
+        "⑤ contract_split — 契约与拆分",
+        "划定前后端/BFF 边界，产出/对齐接口契约要点与可并行任务切分；不写长业务代码。",
+    ),
+    "coder_backend": _downstream_role_prompt(
+        "⑥ coder_backend — Coding·后端",
+        "以后端视角给出实现步骤、接口与数据层注意点；代码仅短示例。不冒充已在用户环境执行命令。",
+    ),
+    "coder_frontend": _downstream_role_prompt(
+        "⑦ coder_frontend — Coding·前端",
+        "以前端视角给出页面/状态/接口消费方式；代码仅短示例。不执行用户侧命令。",
+    ),
+    "coder_fullstack": _downstream_role_prompt(
+        "⑧ coder_fullstack — Coding·全栈",
+        "跨前后端改动时给出串联方案与接口配合点；代码仅短示例。",
+    ),
+    "coder_bff": _downstream_role_prompt(
+        "⑨ coder_bff — Coding·BFF",
+        "从 BFF/聚合层视角说明路由、鉴权与下游调用边界；代码仅短示例。",
+    ),
+    "verify_unit": _downstream_role_prompt(
+        "⑩ verify_unit — Verify·单元测试",
+        "给出单测策略、关键用例与断言要点；不冒充已在用户仓库跑通测试。",
+    ),
+    "verify_e2e": _downstream_role_prompt(
+        "⑪ verify_e2e — Verify·联调/E2E",
+        "给出联调顺序、e2e 场景与数据准备要点；不冒充已跑通流水线。",
+    ),
+    "ops": _downstream_role_prompt(
+        "⑫ ops — Ops·打包运维",
+        "构建、发布、配置与健康巡检类建议；不执行用户侧真实命令。",
+    ),
 }
 
 
+def _ensure_http_scheme(url: str) -> str:
+    """若没有 scheme，默认补成 http（Ollama 本地常见）或调用方自行传入完整 URL。"""
+    s = url.strip()
+    if not s.lower().startswith(("http://", "https://")):
+        return f"http://{s}"
+    return s
+
+
 def _normalize_ollama_origin(raw: str | None) -> str | None:
+    """本地 Ollama：只保留 scheme + host[:port]，供 LiteLLM 的 api_base 使用。"""
     if not raw or not str(raw).strip():
         return None
-    s = str(raw).strip()
-    if not s.lower().startswith(("http://", "https://")):
-        s = f"http://{s}"
+    s = _ensure_http_scheme(str(raw))
     try:
-        from urllib.parse import urlparse
-
         u = urlparse(s)
         return f"{u.scheme}://{u.netloc}"
     except Exception:
@@ -115,14 +141,13 @@ def _normalize_ollama_origin(raw: str | None) -> str | None:
 
 
 def _openai_v1_base(raw: str | None) -> str | None:
+    """线上 OpenAI 兼容网关：规范成 ``.../v1`` 后缀（LiteLLM 期望的 REST 根路径）。"""
     fallback = "https://api.openai.com/v1"
     source = (raw or "").strip() or fallback
     try:
         s = source
         if not s.lower().startswith(("http://", "https://")):
             s = f"https://{s}"
-        from urllib.parse import urlparse
-
         u = urlparse(s)
         path = u.path.rstrip("/")
         if not path.endswith("/v1"):
@@ -136,10 +161,13 @@ def _openai_v1_base(raw: str | None) -> str | None:
 
 
 class EntryChatConfigError(ValueError):
-    pass
+    """槽位配置不完整或 mode 无法识别时抛出，路由层可转成 400/提示用户。"""
 
 
-def build_litellm_call_kwargs(slot: dict[str, Any], *, slot_key: str = "router") -> dict[str, Any]:
+def build_litellm_call_kwargs(
+    slot: dict[str, Any], *, slot_key: str = "router"
+) -> dict[str, Any]:
+    """把「一个槽位」的配置 dict 变成 ``litellm.acompletion`` 所需的 model / api_base / api_key。"""
     mode = slot.get("mode")
     model = (slot.get("model") or "").strip()
     if not model:
@@ -147,10 +175,13 @@ def build_litellm_call_kwargs(slot: dict[str, Any], *, slot_key: str = "router")
             f"「{slot_key}」槽位未配置模型名：请在「Agent 配置」中填写 model。"
         )
 
+    # local：走 Ollama，模型名通常要加 ollama/ 前缀（LiteLLM 约定）。
     if mode == "local":
         origin = _normalize_ollama_origin(slot.get("baseUrl"))
         if not origin:
-            raise EntryChatConfigError("本地模式需要配置 Base URL（如 http://127.0.0.1:11434）。")
+            raise EntryChatConfigError(
+                "本地模式需要配置 Base URL（如 http://127.0.0.1:11434）。"
+            )
         litellm_model = model if model.startswith("ollama/") else f"ollama/{model}"
         return {
             "model": litellm_model,
@@ -158,6 +189,7 @@ def build_litellm_call_kwargs(slot: dict[str, Any], *, slot_key: str = "router")
             "api_key": None,
         }
 
+    # hosted：OpenAI 兼容 API，必须带 key，base 规范到 /v1。
     if mode == "hosted":
         key = (slot.get("apiKey") or "").strip()
         if not key:
@@ -175,10 +207,12 @@ def build_litellm_call_kwargs(slot: dict[str, Any], *, slot_key: str = "router")
 
 
 def _user_assistant_only(raw: list[dict[str, str]]) -> list[dict[str, str]]:
+    """只保留 user/assistant，避免把 tool 等角色原样喂给当前这套 Router/下游。"""
     return [m for m in raw if m.get("role") in ("user", "assistant")]
 
 
 def _completion_text(resp: Any) -> str:
+    """非流式响应里抽出第一条 choice 的文本内容（容错：结构不对就空串）。"""
     try:
         choices = getattr(resp, "choices", None)
         if not choices:
@@ -193,9 +227,11 @@ def _completion_text(resp: Any) -> str:
 
 
 def _parse_route_payload(text: str) -> tuple[str, str]:
+    """从模型返回的字符串里抠 JSON，读 nextSlot + reason；失败则回落到 analyst。"""
     t = text.strip()
     if not t:
         return "analyst", ""
+    # 先尝试用正则抓最像 JSON 对象的一段，再 fallback 到首 `{` 与末 `}`。
     fence = re.search(r"\{[^{}]*\}", t, flags=re.DOTALL)
     if fence:
         t = fence.group(0)
@@ -225,7 +261,7 @@ async def decide_next_slot(
     router_slot: dict[str, Any],
     messages: list[dict[str, str]],
 ) -> tuple[str, str]:
-    """一次非流式调用：仅产出下一槽位 + 原因，不向用户输出可见正文。"""
+    """调用 Router 槽位对应模型，返回 (逻辑角色键, 路由原因)。不流式。"""
     kwargs = build_litellm_call_kwargs(router_slot, slot_key="router")
     ua = _user_assistant_only(messages)
     routing_messages: list[dict[str, str]] = [
@@ -245,6 +281,7 @@ async def decide_next_slot(
 def build_downstream_messages(
     slot_key: str, dialogue: list[dict[str, str]]
 ) -> list[dict[str, str]]:
+    """在对话前插入对应角色的 system，供下游流式调用使用。"""
     system = DOWNSTREAM_AGENT_SYSTEM.get(slot_key)
     if not system:
         raise EntryChatConfigError(f"内部错误：未知下游槽位 {slot_key!r}")
@@ -252,6 +289,7 @@ def build_downstream_messages(
 
 
 def _chunk_text(chunk: Any) -> str:
+    """流式 chunk 里取 delta.content（OpenAI 兼容结构，容错返回空串）。"""
     try:
         choices = getattr(chunk, "choices", None)
         if not choices:
@@ -275,6 +313,7 @@ async def stream_downstream_reply(
     config_slot_key: str,
     messages: list[dict[str, str]],
 ) -> AsyncIterator[str]:
+    """按配置调用 LiteLLM 流式接口，逐段 yield 文本（由路由层打成 SSE）。"""
     kwargs = build_litellm_call_kwargs(target_slot, slot_key=config_slot_key)
     merged = build_downstream_messages(logical_role, messages)
     _log.info(
@@ -293,5 +332,6 @@ async def stream_downstream_reply(
 
 
 async def aiter_sse_entry_error(message: str) -> AsyncIterator[bytes]:
+    """把业务错误编码成一条 SSE error 事件（bytes，便于直接 write 进响应体）。"""
     payload = json.dumps({"message": message}, ensure_ascii=False)
     yield f"event: error\ndata: {payload}\n\n".encode("utf-8")
