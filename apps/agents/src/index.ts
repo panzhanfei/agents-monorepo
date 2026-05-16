@@ -1,80 +1,82 @@
-import { execFile } from "node:child_process";
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import type { Server as HttpServer } from "node:http";
+
 import {
-  buildAgentsConfig,
-  createInMemorySetupTokenStore,
-  createNodeAgentSlotsGateway,
-  createOpenAiEntryChatLlmGateway,
-  loadProcessEnv,
+  type IRunnerAgentSlotsResult,
+  getRunnerAgentSlots,
+  loadAgentsSettings,
+  loadEnv,
+  postRunnerHeartbeat,
+  RunnerGatewayError,
+  tryResolveRunnerCredentials,
 } from "@/infrastructure";
-import { createHttpApplication, type IAppRuntime } from "@/interfaces";
+import { createHttpApp } from "@/interfaces";
 
-loadProcessEnv();
+const logAgentSlotsWarmup = (outcome: IRunnerAgentSlotsResult): void => {
+  if (outcome.status === 304) {
+    // eslint-disable-next-line no-console -- process bootstrap logging
+    console.info("[agents] agent-slots unchanged (304)");
+    return;
+  }
+  const keys = Object.keys(outcome.payload.slots).sort().join(",");
+  // eslint-disable-next-line no-console -- process bootstrap logging
+  console.info(
+    `[agents] agent-slots ok revision=${outcome.payload.configRevision} (${keys})`,
+  );
+};
 
-const openUrlInBrowser = (url: string): void => {
-  const platform = process.platform;
-  if (platform === "darwin") {
-    execFile("open", [url], () => {});
-  } else if (platform === "win32") {
-    execFile("cmd", ["/c", "start", "", url], { windowsHide: true }, () => {});
+const logRunnerWarmupFailure = (err: unknown): void => {
+  let msg: string;
+  if (err instanceof RunnerGatewayError) {
+    msg = err.bodySnippet ? `${err.message} …${err.bodySnippet}` : err.message;
+  } else if (err instanceof Error) {
+    msg = err.message;
   } else {
-    execFile("xdg-open", [url], () => {});
+    msg = String(err);
   }
+  // eslint-disable-next-line no-console -- process bootstrap logging
+  console.warn(`[agents] runner control-plane warmup failed: ${msg}`);
 };
 
-const bindSetupUrl = (webOrigin: string, token: string, listenPort: number): string => {
-  const origin = webOrigin.replace(/\/$/, "");
-  const ingestUrl = `http://127.0.0.1:${listenPort}/v1/setup/ingest`;
-  const qs = new URLSearchParams({ ingestUrl, setupToken: token });
-  return `${origin}/settings/local-init?${qs.toString()}`;
-};
+loadEnv();
 
-const bootstrap = (): void => {
-  const config = buildAgentsConfig();
-  const hasCreds = Boolean(config.deviceKey && config.deviceSecret);
-  const setupToken = createInMemorySetupTokenStore();
+const settings = loadAgentsSettings();
+const app = createHttpApp(settings);
 
-  if (!hasCreds) {
-    setupToken.setPending(setupToken.newToken());
+const warmupRunnerControlPlane = (): void => {
+  const creds = tryResolveRunnerCredentials();
+  if (!creds) {
+    // eslint-disable-next-line no-console -- process bootstrap logging
+    console.info(
+      "[agents] runner credentials incomplete (RUNNER_NODE_API_BASE / RUNNER_DEVICE_KEY / RUNNER_DEVICE_SECRET); skip warmup",
+    );
+    return;
   }
 
-  const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-  const localDotenvPath = path.join(pkgRoot, ".env");
+  postRunnerHeartbeat(creds)
+    .then((hb) => {
+      // eslint-disable-next-line no-console -- process bootstrap logging
+      console.info(`[agents] runner heartbeat ok (lastSeenAt=${hb.lastSeenAt})`);
+      return getRunnerAgentSlots(creds);
+    })
+    .then(logAgentSlotsWarmup)
+    .catch(logRunnerWarmupFailure);
+};
 
-  const runtime: IAppRuntime = {
-    config,
-    agentSlots: createNodeAgentSlotsGateway(config.nodeApiBase, config.deviceKey, config.deviceSecret),
-    llm: createOpenAiEntryChatLlmGateway(),
-    setupToken,
-    localDotenvPath,
-  };
+const server: HttpServer = app.listen(settings.port, settings.host, () => {
+  // eslint-disable-next-line no-console -- process bootstrap logging
+  console.info(
+    `[agents] listening on http://${settings.host}:${settings.port} (${settings.nodeEnv})`,
+  );
+  warmupRunnerControlPlane();
+});
 
-  const app = createHttpApplication(runtime);
-
-  const server = app.listen(config.port, config.host, () => {
-    // eslint-disable-next-line no-console
-    console.info(`agents listening on http://${config.host}:${config.port}`);
-
-    if (!hasCreds) {
-      const token = setupToken.getPending();
-      if (token) {
-        const url = bindSetupUrl(config.setupWebOrigin, token, config.port);
-        // eslint-disable-next-line no-console
-        console.warn("\n首次启动：正在打开浏览器完成本机环境准备（或手动访问）：\n", url, "\n");
-        if (config.setupOpenBrowser) {
-          openUrlInBrowser(url);
-        }
-      }
-    }
+const shutdownHttp = (signal: string, srv: HttpServer): void => {
+  // eslint-disable-next-line no-console -- process lifecycle logging
+  console.info(`[agents] ${signal} received; closing HTTP server`);
+  srv.close(() => {
+    process.exit(0);
   });
-
-  const shutdown = (): void => {
-    server.close(() => process.exit(0));
-  };
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
 };
 
-bootstrap();
+process.once("SIGINT", () => shutdownHttp("SIGINT", server));
+process.once("SIGTERM", () => shutdownHttp("SIGTERM", server));

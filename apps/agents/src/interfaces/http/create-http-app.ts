@@ -1,31 +1,35 @@
 import cors from "cors";
 import express from "express";
-import type { IAppRuntime } from "./runtime";
-import { mountEntryChatRoute, mountSetupIngestRoute } from "./routes";
+import helmet from "helmet";
 
-export const createHttpApplication = (runtime: IAppRuntime): express.Express => {
+import type { IAgentsSettings } from "@/infrastructure";
+
+import { createHttpRouter } from "./routes/index";
+
+export const createHttpApp = (settings: IAgentsSettings): express.Express => {
   const app = express();
+
+  app.disable("x-powered-by");
+  app.use(helmet());
+  app.use(express.json({ limit: "512kb" }));
   app.use(
     cors({
-      origin: runtime.config.allowOrigins,
-      credentials: false,
+      credentials: true,
+      origin: (origin, cb) => {
+        if (!origin) {
+          cb(null, true);
+          return;
+        }
+        if (settings.allowOrigins.some((allowed) => allowed === origin)) {
+          cb(null, true);
+          return;
+        }
+        cb(null, false);
+      },
     }),
   );
-  app.use(express.json({ limit: "1mb" }));
 
-  app.get("/health", (_req, res) => {
-    res.json({ status: "ok" });
-  });
-
-  app.get("/v1/stream/example", (_req, res) => {
-    res.status(200);
-    res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
-    res.write(`data: ${JSON.stringify({ event: "ping", data: "ok" })}\n\n`);
-    setTimeout(() => res.end(), 50);
-  });
-
-  mountSetupIngestRoute(app, runtime);
-  mountEntryChatRoute(app, runtime);
+  app.use(createHttpRouter(settings));
 
   return app;
 };

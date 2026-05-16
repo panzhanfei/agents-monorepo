@@ -1,1 +1,1 @@
-export * from "./http";
+export { createHttpApp } from "./http";

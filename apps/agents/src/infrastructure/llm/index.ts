@@ -1,1 +1,1 @@
-export * from "./openai-entry-chat.llm.gateway";
+export { iterateOpenAiCompatChatText } from "./stream-openai-compat-chat";

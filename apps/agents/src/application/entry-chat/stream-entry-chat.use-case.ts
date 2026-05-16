@@ -1,124 +1,193 @@
+import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
+import type { IRunnerAgentSlotSecret } from "@agents/shared-types";
+import { z } from "zod";
+
+import type { IAgentsSettings } from "@/infrastructure";
 import {
-  configSlotForLogicalRole,
-  EntryChatConfigError,
-  estimatePromptTokens,
-  type IAgentSlotsGateway,
-  type IChatLine,
-  type IEntryChatLlmGateway,
-} from "@/domain";
+  getRunnerAgentSlots,
+  iterateOpenAiCompatChatText,
+  RunnerGatewayError,
+  tryResolveRunnerCredentials,
+} from "@/infrastructure";
 
-export type IEntryChatSseEvent =
-  | { type: "route"; nextSlot: string; reason: string; configSlot: string }
-  | { type: "budget"; remaining: number; total: number }
-  | { type: "token"; text: string }
-  | { type: "budget_exhausted" }
-  | { type: "done"; budgetRemaining: number; budgetTotal: number }
-  | { type: "error"; message: string };
+export const entryChatRequestBodySchema = z.object({
+  messages: z
+    .array(
+      z.object({
+        role: z.enum(["user", "assistant", "system"]),
+        content: z.string(),
+      }),
+    )
+    .min(1),
+  projectId: z.string().trim().min(1).optional(),
+});
 
-export type IStreamEntryChatBudget = {
-  budgetTotal: number;
-  routerOverhead: number;
-};
+export type IEntryChatRequestBody = z.infer<typeof entryChatRequestBodySchema>;
 
-export type IStreamEntryChatInput = {
-  messages: IChatLine[];
-  budget: IStreamEntryChatBudget;
-};
+export type IEntryChatSseEmit = (event: string, data: Record<string, unknown>) => void;
 
-export type IStreamEntryChatDeps = {
-  slots: IAgentSlotsGateway;
-  llm: IEntryChatLlmGateway;
-};
+/** ~4 chars / token heuristic for SSE `budget*` (matches frontend expectations). */
+const roughEstimateTokensFromText = (text: string): number =>
+  Math.max(0, Math.ceil(text.length / 4));
 
-const ROUTER_NOT_CONFIGURED_MSG =
-  "尚未配置「router」路由槽位：请在 Web「Agent 配置」中为 router 填写模型（用于一次 JSON 路由）。";
+export interface IPreparedStreamEntryChatContext {
+  readonly slot: IRunnerAgentSlotSecret;
+  readonly messages: IEntryChatRequestBody["messages"];
+  readonly budgetTotal: number;
+  readonly budgetRemainingStart: number;
+}
 
-export const streamEntryChatEvents = async function* (
-  input: IStreamEntryChatInput,
-  deps: IStreamEntryChatDeps,
-): AsyncGenerator<IEntryChatSseEvent, void, undefined> {
-  const { messages, budget } = input;
-  const routerFetch = await deps.slots.fetchSlotSecret("router");
-  if (routerFetch.kind === "not_modified") {
-    yield {
-      type: "error",
-      message: "无法解析槽位响应，请重试。",
+export type IPrepareStreamEntryChatResult =
+  | { readonly ok: true; readonly ctx: IPreparedStreamEntryChatContext }
+  | { readonly ok: false; readonly status: number; readonly json: Record<string, unknown> };
+
+export const prepareStreamEntryChatContext = async (
+  body: IEntryChatRequestBody,
+  settings: IAgentsSettings,
+): Promise<IPrepareStreamEntryChatResult> => {
+  const creds = tryResolveRunnerCredentials();
+  if (!creds) {
+    return {
+      ok: false,
+      status: 503,
+      json: {
+        error: "runner_credentials_missing",
+        message:
+          "Set RUNNER_NODE_API_BASE, RUNNER_DEVICE_KEY, RUNNER_DEVICE_SECRET (or ~/.agents-runner/device.env).",
+      },
     };
-    return;
-  }
-  const routerRow = routerFetch.value;
-  if (routerRow == null) {
-    yield { type: "error", message: ROUTER_NOT_CONFIGURED_MSG };
-    return;
   }
 
-  const { budgetTotal, routerOverhead } = budget;
-  let nextSlot: string;
-  let reason: string;
+  let slotsOutcome;
   try {
-    const d = await deps.llm.decideNextSlot(routerRow, messages);
-    nextSlot = d.nextSlot;
-    reason = d.reason;
+    slotsOutcome = await getRunnerAgentSlots(creds);
   } catch (e) {
-    if (e instanceof EntryChatConfigError) {
-      yield { type: "error", message: e.message };
-      return;
-    }
-    throw e;
-  }
-  const configKey = configSlotForLogicalRole(nextSlot);
-  if (configKey == null) {
-    yield {
-      type: "error",
-      message: `内部错误：未找到逻辑角色「${nextSlot}」对应的配置槽位。`,
-    };
-    return;
-  }
-
-  yield { type: "route", nextSlot, reason, configSlot: configKey };
-
-  const promptEst = estimatePromptTokens(messages) + routerOverhead;
-  const remainingAfterRoute = Math.max(0, budgetTotal - promptEst);
-  yield { type: "budget", remaining: remainingAfterRoute, total: budgetTotal };
-
-  const targetFetch = await deps.slots.fetchSlotSecret(configKey);
-  if (targetFetch.kind === "not_modified") {
-    yield { type: "error", message: "无法从控制面读取 Agent 槽位" };
-    return;
-  }
-  const target = targetFetch.value;
-  if (target == null) {
-    yield {
-      type: "error",
-      message: `路由为逻辑角色「${nextSlot}」，需使用控制面槽位「${configKey}」的模型配置；该槽位尚未在 Web「Agent 配置」中填写并保存，请先配置后再试。`,
-    };
-    return;
-  }
-
-  let completionChars = 0;
-  try {
-    for await (const token of deps.llm.streamDownstreamReply(
-      target,
-      nextSlot,
-      configKey,
-      messages,
-    )) {
-      completionChars += token.length;
-      yield { type: "token", text: token };
-    }
-  } catch (e) {
-    if (e instanceof EntryChatConfigError) {
-      yield { type: "error", message: e.message };
-      return;
+    if (e instanceof RunnerGatewayError) {
+      return {
+        ok: false,
+        status: 502,
+        json: {
+          error: "agent_slots_upstream",
+          message: e.message,
+          ...(e.bodySnippet ? { snippet: e.bodySnippet } : {}),
+        },
+      };
     }
     throw e;
   }
 
-  const completionEst = completionChars > 0 ? Math.floor(completionChars / 4) : 0;
-  const remainingEnd = Math.max(0, budgetTotal - promptEst - completionEst);
-  yield { type: "budget", remaining: remainingEnd, total: budgetTotal };
-  if (remainingEnd <= 0) {
-    yield { type: "budget_exhausted" };
+  if (slotsOutcome.status !== 200) {
+    return {
+      ok: false,
+      status: 503,
+      json: {
+        error: "agent_slots_unusable",
+        message: "Unexpected agent-slots response (expected 200 with body).",
+      },
+    };
   }
-  yield { type: "done", budgetRemaining: remainingEnd, budgetTotal };
+
+  const routerSlot = slotsOutcome.payload.slots.router;
+  if (!routerSlot) {
+    return {
+      ok: false,
+      status: 422,
+      json: {
+        error: "router_slot_missing",
+        message: "Configure the `router` slot in control-plane Agent models for this Runner user.",
+      },
+    };
+  }
+
+  if (routerSlot.mode === "hosted" && !(routerSlot.apiKey?.trim()?.length ?? 0)) {
+    return {
+      ok: false,
+      status: 422,
+      json: {
+        error: "router_hosted_api_key_missing",
+        message: "`router` hosted mode requires an API key in control-plane.",
+      },
+    };
+  }
+
+  const overhead = settings.entryChatRouterOverhead;
+  const total = settings.entryChatRoundTokenBudget;
+  const payloadText = body.messages.map((m) => m.content).join("\n");
+  const started = roughEstimateTokensFromText(payloadText);
+  const budgetRemainingStart = Math.max(0, total - overhead - started);
+
+  return {
+    ok: true,
+    ctx: {
+      slot: routerSlot,
+      messages: body.messages,
+      budgetTotal: total,
+      budgetRemainingStart,
+    },
+  };
+};
+
+export const runPreparedEntryChatStream = async (
+  ctx: IPreparedStreamEntryChatContext,
+  emit: IEntryChatSseEmit,
+): Promise<void> => {
+  emit("route", {
+    nextSlot: "router",
+    reason: "entry",
+    configSlot: "router",
+  });
+
+  let remaining = ctx.budgetRemainingStart;
+  emit("budget", { remaining, total: ctx.budgetTotal });
+
+  if (remaining <= 0) {
+    emit("budget_exhausted", {});
+    emit("done", { budgetRemaining: remaining, budgetTotal: ctx.budgetTotal });
+    return;
+  }
+
+  const ac = new AbortController();
+  let exhaustedByBudget = false;
+
+  try {
+    const iterable = iterateOpenAiCompatChatText({
+      slot: ctx.slot,
+      messages: ctx.messages as ChatCompletionMessageParam[],
+      abortSignal: ac.signal,
+    });
+
+    for await (const text of iterable) {
+      if (text.length === 0) continue;
+
+      emit("token", { text });
+      remaining -= roughEstimateTokensFromText(text);
+
+      if (remaining <= 0) {
+        exhaustedByBudget = true;
+        emit("budget_exhausted", {});
+        ac.abort();
+        break;
+      }
+    }
+
+    emit("done", {
+      budgetRemaining: Math.max(0, remaining),
+      budgetTotal: ctx.budgetTotal,
+    });
+  } catch (e) {
+    const aborted =
+      e !== null &&
+      typeof e === "object" &&
+      "name" in e &&
+      (e as { name?: string }).name === "AbortError";
+    if (aborted && exhaustedByBudget) {
+      emit("done", {
+        budgetRemaining: Math.max(0, remaining),
+        budgetTotal: ctx.budgetTotal,
+      });
+      return;
+    }
+    const msg = e instanceof Error ? e.message : String(e);
+    emit("error", { message: msg });
+  }
 };

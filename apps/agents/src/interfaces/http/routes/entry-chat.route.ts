@@ -1,88 +1,83 @@
-import type express from "express";
-import { z } from "zod";
-import { streamEntryChatEvents } from "@/application";
-import { AgentSlotsAccessError } from "@/domain";
-import type { IAppRuntime } from "../runtime";
-import { writeEntryChatSseEvent } from "../sse";
+import type { NextFunction, Request, Response } from "express";
+import { Router } from "express";
 
-const chatMessageIn = z.object({
-  role: z.enum(["user", "assistant", "system"]),
-  content: z.string().min(1).max(32_000),
-});
+import type { IAgentsSettings } from "@/infrastructure";
 
-const entryChatRequest = z.object({
-  messages: z.array(chatMessageIn).min(1).max(80),
-  projectId: z.string().max(128).optional(),
-});
+import {
+  entryChatRequestBodySchema,
+  prepareStreamEntryChatContext,
+  runPreparedEntryChatStream,
+} from "@/application";
 
-export const mountEntryChatRoute = (
-  app: express.Express,
-  runtime: IAppRuntime,
-): void => {
-  app.post("/v1/agent/entry/chat", async (req, res) => {
-    const parsed = entryChatRequest.safeParse(req.body);
+import { writeSsePayload } from "../sse/write-sse-payload";
+
+const rejectJsonBeforeSse = (res: Response, status: number, jsonBody: Record<string, unknown>): void => {
+  if (res.writableEnded) return;
+  res.status(status).json(jsonBody);
+};
+
+const beginSseOk = (res: Response): void => {
+  if (res.writableEnded) return;
+  res.status(200);
+  res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+
+  type ResponseWithFlush = Response & {
+    flushHeaders?: () => void;
+  };
+
+  const maybeFlushable = res as ResponseWithFlush;
+  if (typeof maybeFlushable.flushHeaders === "function") {
+    maybeFlushable.flushHeaders();
+  }
+};
+
+export const attachAgentEntryChatRoute = (agentRouter: Router, agentsSettings: IAgentsSettings): void => {
+  agentRouter.post("/entry/chat", (req: Request, res: Response, next: NextFunction) => {
+    void handlePostEntryChat(req, res, next, agentsSettings);
+  });
+};
+
+const handlePostEntryChat = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+  agentsSettings: IAgentsSettings,
+): Promise<void> => {
+  try {
+    const parsed = entryChatRequestBodySchema.safeParse(req.body ?? {});
     if (!parsed.success) {
-      res.status(400).json({ message: "请求体无效" });
-      return;
-    }
-
-    const messages = parsed.data.messages.map((m) => ({
-      role: m.role,
-      content: m.content,
-    }));
-
-    const gen = streamEntryChatEvents(
-      {
-        messages,
-        budget: {
-          budgetTotal: runtime.config.entryChatRoundTokenBudget,
-          routerOverhead: runtime.config.entryChatRouterOverheadTokens,
-        },
-      },
-      { slots: runtime.agentSlots, llm: runtime.llm },
-    );
-
-    let first;
-    try {
-      first = await gen.next();
-    } catch (e) {
-      if (e instanceof AgentSlotsAccessError) {
-        const st = e.httpStatus;
-        if (st === 401 || st === 403) {
-          res
-            .status(502)
-            .json({ message: "Runner 设备凭据无效或已过期，请重新注册或一键绑定。" });
-          return;
-        }
-        res.status(502).json({ message: "无法从控制面读取 Agent 槽位" });
-        return;
-      }
-      res.status(502).json({
-        message:
-          e instanceof Error && e.message
-            ? e.message.slice(0, 400)
-            : "入口对话初始化失败，请稍后重试。",
+      rejectJsonBeforeSse(res, 400, {
+        error: "validation_error",
+        details: parsed.error.flatten(),
       });
       return;
     }
 
-    if (first.done) return;
-
-    res.status(200);
-    res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
-    res.setHeader("Cache-Control", "no-cache");
-    res.flushHeaders?.();
-
-    try {
-      writeEntryChatSseEvent(res, first.value);
-      for await (const ev of gen) {
-        writeEntryChatSseEvent(res, ev);
-        if (ev.type === "error") break;
-      }
-    } catch (e) {
-      const tail = e instanceof Error && e.message ? `（${e.message.slice(0, 200)}）` : "";
-      writeEntryChatSseEvent(res, { type: "error", message: `模型调用失败，请稍后重试。${tail}` });
+    const prepared = await prepareStreamEntryChatContext(parsed.data, agentsSettings);
+    if (!prepared.ok) {
+      rejectJsonBeforeSse(res, prepared.status, prepared.json);
+      return;
     }
-    res.end();
-  });
+
+    beginSseOk(res);
+
+    const emit = (event: string, payload: Record<string, unknown>): void =>
+      writeSsePayload(res, event, payload);
+
+    await runPreparedEntryChatStream(prepared.ctx, emit);
+
+    if (!res.writableEnded) {
+      res.end();
+    }
+  } catch (e) {
+    if (res.headersSent || res.writableEnded) {
+      if (!res.writableEnded && res.writable) {
+        res.end();
+      }
+      return;
+    }
+    next(e);
+  }
 };

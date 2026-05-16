@@ -1,20 +1,19 @@
-import fs from "node:fs";
-import path from "node:path";
-import os from "node:os";
-import dotenv from "dotenv";
-import { fileURLToPath } from "node:url";
+import { config as loadDotEnv } from "dotenv";
+import { existsSync } from "node:fs";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
 
-/** 进程启动时加载：`apps/agents/.env` → `AGENTS_DEVICE_ENV_PATH` 或默认 `~/.agents-runner/device.env`。 */
-export const loadProcessEnv = (): void => {
-  const __dirname = path.dirname(fileURLToPath(import.meta.url));
-  const repoEnv = path.resolve(__dirname, "../../../.env");
-  if (fs.existsSync(repoEnv)) {
-    dotenv.config({ path: repoEnv });
+/** Load `.env`, device file (`RUNNER_*`), then `.env.local` (override). Cwd expects `apps/agents`. */
+export const loadEnv = (): void => {
+  const cwd = process.cwd();
+  loadDotEnv({ path: resolve(cwd, ".env") });
+
+  const explicit = process.env.AGENTS_DEVICE_ENV_PATH?.trim();
+  const fallback = join(homedir(), ".agents-runner", "device.env");
+  const devicePath = explicit && explicit.length > 0 ? explicit : fallback;
+  if (existsSync(devicePath)) {
+    loadDotEnv({ path: devicePath });
   }
-  const devicePath =
-    process.env.AGENTS_DEVICE_ENV_PATH?.trim() ||
-    path.join(os.homedir(), ".agents-runner", "device.env");
-  if (fs.existsSync(devicePath)) {
-    dotenv.config({ path: devicePath, override: true });
-  }
+
+  loadDotEnv({ path: resolve(cwd, ".env.local"), override: true });
 };
