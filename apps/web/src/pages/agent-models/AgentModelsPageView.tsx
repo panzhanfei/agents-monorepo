@@ -1,4 +1,3 @@
-import { useEffect, useMemo, useState } from "react";
 import {
   Box,
   Button,
@@ -10,231 +9,25 @@ import {
   TextField,
 } from "@radix-ui/themes";
 import { Link as RouterLink } from "react-router-dom";
-import {
-  AGENT_SLOT_KEYS,
-  type IAgentInferenceMode,
-  type IAgentSlotKey,
-  type IAgentSlotPublic,
-  type IAuthPatchAgentSlotBody,
-} from "@agents/shared-types";
-import { ApiError } from "@/api";
-import { getMutationErrorMessage, useMeQuery, usePatchAuthMeMutation } from "@/hooks";
-import { InferenceTestBlock } from "./InferenceTestBlock";
+import { InferenceTestBlock } from "@/pages/inference-test-block";
+import { AGENT_MODELS_SLOT_META } from "./utils";
+import type { IAgentModelsPageViewModel } from "./useAgentModelsPage";
 
-const SLOT_META: readonly { key: IAgentSlotKey; label: string }[] = [
-  { key: "router", label: "入口路由" },
-  { key: "analyst", label: "需求分析" },
-  { key: "architect", label: "架构设计" },
-  { key: "coder", label: "编码实现" },
-  { key: "reviewer", label: "代码评审" },
-  { key: "verifier", label: "验证（测试 / CI）" },
-  { key: "ops", label: "构建与发布" },
-];
+export type IAgentModelsPageViewProps = { vm: IAgentModelsPageViewModel };
 
-type ISlotLocalDraft = {
-  baseUrl: string;
-  model: string;
-};
-
-type ISlotHostedDraft = {
-  baseUrl: string;
-  model: string;
-  hostedProvider: string;
-  apiKeyDraft: string;
-  clearApiKey: boolean;
-};
-
-type ISlotDraft = {
-  mode: IAgentInferenceMode;
-  local: ISlotLocalDraft;
-  hosted: ISlotHostedDraft;
-};
-
-const emptyDraft = (): ISlotDraft => ({
-  mode: "local",
-  local: { baseUrl: "", model: "" },
-  hosted: {
-    baseUrl: "",
-    model: "",
-    hostedProvider: "",
-    apiKeyDraft: "",
-    clearApiKey: false,
-  },
-});
-
-const initialDraftRecord = (): Record<IAgentSlotKey, ISlotDraft> => {
-  const o = {} as Record<IAgentSlotKey, ISlotDraft>;
-  for (const k of AGENT_SLOT_KEYS) o[k] = emptyDraft();
-  return o;
-};
-
-const draftsEqual = (a: ISlotDraft, b: ISlotDraft): boolean =>
-  a.mode === b.mode &&
-  a.local.baseUrl === b.local.baseUrl &&
-  a.local.model === b.local.model &&
-  a.hosted.baseUrl === b.hosted.baseUrl &&
-  a.hosted.model === b.hosted.model &&
-  a.hosted.hostedProvider === b.hosted.hostedProvider &&
-  a.hosted.apiKeyDraft === b.hosted.apiKeyDraft &&
-  a.hosted.clearApiKey === b.hosted.clearApiKey;
-
-/** `model` 为空时表示删除该槽配置；否则返回写入体。 */
-const patchBodyFromDraft = (d: ISlotDraft): IAuthPatchAgentSlotBody | null => {
-  if (d.mode === "local") {
-    if (!d.local.model.trim()) return null;
-    const baseTrim = d.local.baseUrl.trim();
-    const baseUrlVal = baseTrim === "" ? null : baseTrim;
-    return { mode: "local", model: d.local.model.trim(), baseUrl: baseUrlVal };
-  }
-  if (!d.hosted.model.trim()) return null;
-  const baseTrim = d.hosted.baseUrl.trim();
-  const baseUrlVal = baseTrim === "" ? null : baseTrim;
-  const hp = d.hosted.hostedProvider.trim();
-  return {
-    mode: "hosted",
-    model: d.hosted.model.trim(),
-    baseUrl: baseUrlVal,
-    hostedProvider: hp === "" ? null : hp,
-    ...(d.hosted.clearApiKey
-      ? { apiKey: null }
-      : d.hosted.apiKeyDraft.trim()
-        ? { apiKey: d.hosted.apiKeyDraft.trim() }
-        : {}),
-  };
-};
-
-const validateSlotBeforeSave = (d: ISlotDraft, serverSlot: IAgentSlotPublic | undefined): string | null => {
-  if (d.mode !== "hosted") return null;
-  if (!d.hosted.model.trim()) return null;
-  const hasStoredKey = Boolean(serverSlot?.apiKeyConfigured);
-  const typedKey = d.hosted.apiKeyDraft.trim().length > 0;
-  if (!hasStoredKey && !typedKey && !d.hosted.clearApiKey) {
-    return "线上模式需提供 API Key（必填 · 当前尚无已存密钥）";
-  }
-  return null;
-};
-
-const draftFromServerSlots = (
-  agentSlots: Record<IAgentSlotKey, IAgentSlotPublic>,
-): Record<IAgentSlotKey, ISlotDraft> => {
-  const next = initialDraftRecord();
-  for (const k of AGENT_SLOT_KEYS) {
-    const s = agentSlots[k];
-    if (s.mode === "local") {
-      next[k] = {
-        mode: "local",
-        local: { baseUrl: s.baseUrl ?? "", model: s.model },
-        hosted: {
-          baseUrl: "",
-          model: "",
-          hostedProvider: "",
-          apiKeyDraft: "",
-          clearApiKey: false,
-        },
-      };
-    } else {
-      next[k] = {
-        mode: "hosted",
-        local: { baseUrl: "", model: "" },
-        hosted: {
-          baseUrl: s.baseUrl ?? "",
-          model: s.model,
-          hostedProvider: s.hostedProvider ?? "",
-          apiKeyDraft: "",
-          clearApiKey: false,
-        },
-      };
-    }
-  }
-  return next;
-};
-
-const mergeSlotDraft = (
-  prev: Record<IAgentSlotKey, ISlotDraft>,
-  key: IAgentSlotKey,
-  partial: Partial<ISlotDraft>,
-): Record<IAgentSlotKey, ISlotDraft> => {
-  const cur = prev[key];
-  const merged: ISlotDraft = {
-    ...cur,
-    ...partial,
-    local: partial.local ? { ...cur.local, ...partial.local } : cur.local,
-    hosted: partial.hosted ? { ...cur.hosted, ...partial.hosted } : cur.hosted,
-  };
-  return { ...prev, [key]: merged };
-};
-
-export const AgentModelsPage = () => {
-  const meQ = useMeQuery();
-  const patchM = usePatchAuthMeMutation();
-
-  const agentSlots = meQ.data?.user.agentSlots;
-
-  const [draft, setDraft] = useState<Record<IAgentSlotKey, ISlotDraft>>(initialDraftRecord);
-  const [slotErrors, setSlotErrors] = useState<Partial<Record<IAgentSlotKey, string>>>({});
-
-  useEffect(() => {
-    if (!agentSlots) return;
-    setDraft(draftFromServerSlots(agentSlots));
-    setSlotErrors({});
-  }, [agentSlots]);
-
-  const loadError = meQ.isError
-    ? meQ.error instanceof ApiError
-      ? meQ.error.message
-      : "Failed to load profile"
-    : null;
-
-  const serverSnapshot = useMemo(() => (agentSlots ? draftFromServerSlots(agentSlots) : null), [agentSlots]);
-
-  const patchSlotDraft = (key: IAgentSlotKey, partial: Partial<ISlotDraft>): void => {
-    setSlotErrors((prev) => {
-      if (prev[key] === undefined) return prev;
-      const next = { ...prev };
-      delete next[key];
-      return next;
-    });
-    setDraft((prev) => mergeSlotDraft(prev, key, partial));
-  };
-
-  const discardSlot = (key: IAgentSlotKey): void => {
-    if (!serverSnapshot) return;
-    setSlotErrors((prev) => {
-      if (prev[key] === undefined) return prev;
-      const next = { ...prev };
-      delete next[key];
-      return next;
-    });
-    setDraft((prev) => ({ ...prev, [key]: serverSnapshot[key] }));
-  };
-
-  const saveSlot = (key: IAgentSlotKey): void => {
-    const d = draft[key];
-    const serverSlot = agentSlots?.[key];
-    const validation = validateSlotBeforeSave(d, serverSlot);
-    if (validation) {
-      setSlotErrors((prev) => ({ ...prev, [key]: validation }));
-      return;
-    }
-    setSlotErrors((prev) => {
-      if (prev[key] === undefined) return prev;
-      const next = { ...prev };
-      delete next[key];
-      return next;
-    });
-    const body = patchBodyFromDraft(d);
-    patchM.mutate(
-      { agentSlots: { [key]: body } },
-      {
-        onError: (e) => {
-          setSlotErrors((prev) => ({
-            ...prev,
-            [key]: getMutationErrorMessage(e, "保存失败"),
-          }));
-        },
-      },
-    );
-  };
+export const AgentModelsPageView = ({ vm }: IAgentModelsPageViewProps) => {
+  const {
+    patchM,
+    agentSlots,
+    draft,
+    slotErrors,
+    loadError,
+    serverSnapshot,
+    patchSlotDraft,
+    discardSlot,
+    saveSlot,
+    draftsEqual,
+  } = vm;
 
   return (
     <Flex direction="column" gap="5">
@@ -266,7 +59,7 @@ export const AgentModelsPage = () => {
       ) : null}
 
       <Flex direction="column" gap="4">
-        {SLOT_META.map(({ key, label }) => {
+        {AGENT_MODELS_SLOT_META.map(({ key, label }) => {
           const d = draft[key];
           const serverSlot = agentSlots?.[key];
           const snap = serverSnapshot?.[key];
@@ -450,11 +243,7 @@ export const AgentModelsPage = () => {
                   >
                     丢弃此槽未保存改动
                   </Button>
-                  <Button
-                    type="button"
-                    disabled={!dirty || patchM.isPending}
-                    onClick={() => saveSlot(key)}
-                  >
+                  <Button type="button" disabled={!dirty || patchM.isPending} onClick={() => saveSlot(key)}>
                     {savingThis ? "保存中…" : "保存此槽位"}
                   </Button>
                 </Flex>

@@ -1,32 +1,13 @@
-import { useEffect, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
 import { Button, Callout, Flex, Text, TextField } from "@radix-ui/themes";
-import type { IAgentSlotKey } from "@agents/shared-types";
-import { ApiError, postAuthInferenceTest } from "@/api";
+import type { IInferenceTestBlockProps } from "./interface";
+import type { IInferenceTestBlockViewModel } from "./useInferenceTestBlock";
 
-export type IInferenceTestBlockProps = {
-  slotKey: IAgentSlotKey;
-  /** 表单里当前模型名，便于覆盖探测 */
-  modelDraft?: string;
-  intro?: string;
+export type IInferenceTestBlockViewProps = IInferenceTestBlockProps & {
+  vm: IInferenceTestBlockViewModel;
 };
 
-export const InferenceTestBlock = ({ slotKey, modelDraft = "", intro }: IInferenceTestBlockProps) => {
-  const [model, setModel] = useState(modelDraft);
-
-  useEffect(() => {
-    setModel(modelDraft);
-  }, [modelDraft]);
-
-  const testM = useMutation({
-    mutationFn: () =>
-      postAuthInferenceTest({
-        slotKey,
-        model: model.trim().length > 0 ? model.trim() : undefined,
-      }),
-  });
-
-  const result = testM.data ?? null;
+export const InferenceTestBlockView = ({ slotKey, intro, vm }: IInferenceTestBlockViewProps) => {
+  const { model, setModel, testM, result, errorMessage } = vm;
 
   return (
     <Flex direction="column" gap="3">
@@ -51,11 +32,9 @@ export const InferenceTestBlock = ({ slotKey, modelDraft = "", intro }: IInferen
           {testM.isPending ? "检测中…" : "测试本槽连接"}
         </Button>
       </Flex>
-      {testM.isError ? (
+      {errorMessage ? (
         <Callout.Root color="red" role="alert">
-          <Callout.Text>
-            {testM.error instanceof ApiError ? testM.error.message : "请求失败"}
-          </Callout.Text>
+          <Callout.Text>{errorMessage}</Callout.Text>
         </Callout.Root>
       ) : null}
       {result ? (

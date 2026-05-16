@@ -1,3 +1,5 @@
+"""Runner 进程的环境配置：从 `.env`、设备凭据文件与 `RUNNER_*` 环境变量加载。"""
+
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -8,6 +10,8 @@ RUNNER_DEVICE_CREDENTIALS_FILE = Path.home() / ".agents-runner" / "device.env"
 
 
 class Settings(BaseSettings):
+    """Runner 运行时配置模型（字段含义见属性上的 `#:` 注释）。"""
+
     model_config = SettingsConfigDict(
         env_prefix="RUNNER_",
         env_file=(".env", str(RUNNER_DEVICE_CREDENTIALS_FILE)),
@@ -37,4 +41,5 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
+    """构建并缓存单例 ``Settings``（合并 env 文件与进程环境变量）。"""
     return Settings()

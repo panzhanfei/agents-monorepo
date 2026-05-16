@@ -1,19 +1,12 @@
 import { Box, Button, Callout, Card, Flex, Heading, Text, TextField } from "@radix-ui/themes";
 import { Link as RouterLink } from "react-router-dom";
-import { ApiError, getApiBase } from "@/api";
-import { useAuth } from "@/auth";
-import { useMeQuery } from "@/hooks";
+import { getApiBase } from "@/api";
+import type { ISettingsPageViewModel } from "./useSettingsPage";
 
-export const SettingsPage = () => {
-  const { user, clearSession } = useAuth();
-  const meQ = useMeQuery();
-  const displayUser = meQ.data?.user ?? user;
+export type ISettingsPageViewProps = { vm: ISettingsPageViewModel };
 
-  const profileError = meQ.isError
-    ? meQ.error instanceof ApiError
-      ? meQ.error.message
-      : "Failed to load profile"
-    : null;
+export const SettingsPageView = ({ vm }: ISettingsPageViewProps) => {
+  const { displayUser, profileError, meQ, clearSession } = vm;
 
   return (
     <Flex direction="column" gap="5">

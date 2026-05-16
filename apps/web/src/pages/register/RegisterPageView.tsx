@@ -1,46 +1,23 @@
-import { useEffect, useState, type FormEvent } from "react";
 import { Button, Callout, Flex, TextField } from "@radix-ui/themes";
-import { Link, useLocation, useNavigate } from "react-router-dom";
-import { useAuth } from "@/auth";
-import { getMutationErrorMessage, useRegisterMutation } from "@/hooks";
-import { getPostAuthRedirectPath } from "@/utils/postAuthRedirect";
+import { Link } from "react-router-dom";
 import {
   AUTH_ALT_LINK_BUTTON_CLASS,
   AUTH_CALLOUT_ERROR_CLASS,
   AUTH_FIELD_CLASS,
   AUTH_LABEL_CLASS,
   AUTH_SUBMIT_BUTTON_CLASS,
-  AuthScreen,
-} from "./AuthScreen";
+} from "@/pages/auth";
+import type { IRegisterPageViewModel } from "./useRegisterPage";
 
-export const RegisterPage = () => {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const { accessToken } = useAuth();
-  const register = useRegisterMutation();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+export type IRegisterPageViewProps = {
+  vm: IRegisterPageViewModel;
+};
 
-  useEffect(() => {
-    register.reset();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset on credential edit only; `register` identity is unstable
-  }, [email, password]);
-
-  useEffect(() => {
-    if (accessToken) {
-      navigate(getPostAuthRedirectPath(location.state), { replace: true });
-    }
-  }, [accessToken, navigate, location.state]);
-
-  const onSubmit = (e: FormEvent): void => {
-    e.preventDefault();
-    register.mutate({ email, password });
-  };
-
-  const error = register.isError ? getMutationErrorMessage(register.error, "Register failed") : null;
+export const RegisterPageView = ({ vm }: IRegisterPageViewProps) => {
+  const { email, setEmail, password, setPassword, onSubmit, error, registerPending } = vm;
 
   return (
-    <AuthScreen title="注册" subtitle="密码至少 8 位，即刻开始协作">
+    <>
       {error ? (
         <Callout.Root color="red" role="alert" className={AUTH_CALLOUT_ERROR_CLASS}>
           <Callout.Text>{error}</Callout.Text>
@@ -80,8 +57,8 @@ export const RegisterPage = () => {
             />
           </div>
           <Flex direction="column" gap="2" mt="2">
-            <Button type="submit" size="3" disabled={register.isPending} className={AUTH_SUBMIT_BUTTON_CLASS}>
-              {register.isPending ? "创建中…" : "创建并登录"}
+            <Button type="submit" size="3" disabled={registerPending} className={AUTH_SUBMIT_BUTTON_CLASS}>
+              {registerPending ? "创建中…" : "创建并登录"}
             </Button>
             <Button variant="ghost" color="gray" size="3" asChild className={AUTH_ALT_LINK_BUTTON_CLASS}>
               <Link to="/login">已有账号？去登录</Link>
@@ -89,6 +66,6 @@ export const RegisterPage = () => {
           </Flex>
         </Flex>
       </form>
-    </AuthScreen>
+    </>
   );
 };
